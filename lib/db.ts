@@ -1,10 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { Pool } from "pg";
-
-const globalForDb = globalThis as unknown as {
-  pool: Pool | undefined;
-  poolUrl: string | undefined;
-};
+import { Pool, QueryResult, QueryResultRow } from "pg";
 
 function resolveDatabaseUrl(): string {
   if (process.env.DATABASE_URL) {
@@ -25,18 +20,27 @@ function resolveDatabaseUrl(): string {
 function normalizeDatabaseUrl(value: string): string {
   const url = new URL(value);
   url.searchParams.delete("sslmode");
+  url.searchParams.delete("pgbouncer");
   return url.toString();
 }
 
-export function getDb(): Pool {
+export async function query<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  params?: unknown[],
+): Promise<QueryResult<T>> {
   const url = normalizeDatabaseUrl(resolveDatabaseUrl());
-  if (!globalForDb.pool || globalForDb.poolUrl !== url) {
-    globalForDb.pool = new Pool({
-      connectionString: url,
-      max: 4,
-      ssl: { rejectUnauthorized: false },
-    });
-    globalForDb.poolUrl = url;
+  const pool = new Pool({
+    connectionString: url,
+    max: 1,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 1000,
+    allowExitOnIdle: true,
+    ssl: { rejectUnauthorized: false },
+  });
+
+  try {
+    return await pool.query<T>(text, params);
+  } finally {
+    await pool.end().catch(() => undefined);
   }
-  return globalForDb.pool;
 }

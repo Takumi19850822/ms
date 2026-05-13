@@ -1,6 +1,6 @@
 import { SessionUser, ResourceRecord } from "@/lib/types";
 import { RESOURCE_CONFIGS } from "@/lib/resources";
-import { getDb } from "@/lib/db";
+import { query } from "@/lib/db";
 
 const STORE_IDS = ["store-a", "store-b"];
 let schemaReady: Promise<void> | null = null;
@@ -23,8 +23,7 @@ function seedRecords(resourceId: string): ResourceRecord[] {
 async function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
-      const db = getDb();
-      await db.query(`
+      await query(`
         CREATE TABLE IF NOT EXISTS "ResourceRecord" (
           id TEXT PRIMARY KEY,
           "resourceId" TEXT NOT NULL,
@@ -37,8 +36,8 @@ async function ensureSchema() {
           "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
       `);
-      await db.query(`CREATE INDEX IF NOT EXISTS "idx_resource_id" ON "ResourceRecord" ("resourceId");`);
-      await db.query(
+      await query(`CREATE INDEX IF NOT EXISTS "idx_resource_id" ON "ResourceRecord" ("resourceId");`);
+      await query(
         `CREATE INDEX IF NOT EXISTS "idx_resource_store" ON "ResourceRecord" ("resourceId", "storeId");`,
       );
     })();
@@ -70,8 +69,7 @@ function toRecord(row: {
 
 async function ensureSeeded(resourceId: string) {
   await ensureSchema();
-  const db = getDb();
-  const countResult = await db.query<{ count: string }>(
+  const countResult = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM "ResourceRecord" WHERE "resourceId" = $1`,
     [resourceId],
   );
@@ -81,7 +79,7 @@ async function ensureSeeded(resourceId: string) {
   }
   const seeds = seedRecords(resourceId);
   for (const item of seeds) {
-    await db.query(
+    await query(
       `INSERT INTO "ResourceRecord" (id, "resourceId", code, name, "storeId", note, version)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [item.id, resourceId, item.code, item.name, item.storeId, item.note, item.version],
@@ -91,7 +89,6 @@ async function ensureSeeded(resourceId: string) {
 
 export async function listResource(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
   await ensureSeeded(resourceId);
-  const db = getDb();
   const keyword = search.trim();
   const params: Array<string | null> = [resourceId];
   const where: string[] = [`"resourceId" = $1`];
@@ -109,7 +106,7 @@ export async function listResource(resourceId: string, user: SessionUser, search
     );
   }
 
-  const result = await db.query<{
+  const result = await query<{
     id: string;
     code: string;
     name: string;
@@ -130,15 +127,14 @@ export async function listResource(resourceId: string, user: SessionUser, search
 
 export async function createResource(resourceId: string, user: SessionUser): Promise<ResourceRecord> {
   await ensureSeeded(resourceId);
-  const db = getDb();
-  const countResult = await db.query<{ count: string }>(
+  const countResult = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM "ResourceRecord" WHERE "resourceId" = $1`,
     [resourceId],
   );
   const nextNumber = Number(countResult.rows[0]?.count ?? "0") + 1;
   const storeId = user.role === "store" ? user.storeId : "store-a";
 
-  const created = await db.query<{
+  const created = await query<{
     id: string;
     code: string;
     name: string;
@@ -162,8 +158,7 @@ export async function updateResource(
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note" | "version">,
 ): Promise<{ ok: true; record: ResourceRecord } | { ok: false; reason: "not_found" | "forbidden" | "version_conflict" }> {
   await ensureSeeded(resourceId);
-  const db = getDb();
-  const targetResult = await db.query<{
+  const targetResult = await query<{
     id: string;
     storeId: string | null;
     version: number;
@@ -184,7 +179,7 @@ export async function updateResource(
   if (payload.version !== target.version) {
     return { ok: false, reason: "version_conflict" };
   }
-  const updated = await db.query<{
+  const updated = await query<{
     id: string;
     code: string;
     name: string;
