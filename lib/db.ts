@@ -22,10 +22,20 @@ function resolveDatabaseUrl(): string {
   throw new Error("DATABASE_URL is not configured in runtime environment.");
 }
 
+function normalizeDatabaseUrl(value: string): string {
+  const url = new URL(value);
+  url.searchParams.delete("sslmode");
+  return url.toString();
+}
+
 export function getDb(): Pool {
-  const url = resolveDatabaseUrl();
+  const url = normalizeDatabaseUrl(resolveDatabaseUrl());
   if (!globalForDb.pool || globalForDb.poolUrl !== url) {
-    globalForDb.pool = new Pool({ connectionString: url, max: 4 });
+    globalForDb.pool = new Pool({
+      connectionString: url,
+      max: 4,
+      ssl: { rejectUnauthorized: false },
+    });
     globalForDb.poolUrl = url;
   }
   return globalForDb.pool;
