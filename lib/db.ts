@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { Pool, QueryResult, QueryResultRow } from "pg";
+import { Client, QueryResult, QueryResultRow } from "pg";
 
 function resolveDatabaseUrl(): string {
   if (process.env.DATABASE_URL) {
@@ -29,18 +29,16 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   params?: unknown[],
 ): Promise<QueryResult<T>> {
   const url = normalizeDatabaseUrl(resolveDatabaseUrl());
-  const pool = new Pool({
+  const client = new Client({
     connectionString: url,
-    max: 1,
     connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 1000,
-    allowExitOnIdle: true,
     ssl: { rejectUnauthorized: false },
   });
 
   try {
-    return await pool.query<T>(text, params);
+    await client.connect();
+    return await client.query<T>(text, params);
   } finally {
-    await pool.end().catch(() => undefined);
+    await client.end().catch(() => undefined);
   }
 }
