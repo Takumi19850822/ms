@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ResourceRecord {
+  id         String   @id @default(cuid())
+  resourceId String
+  code       String
+  name       String
+  storeId    String?
+  note       String   @default("")
+  updatedAt  DateTime @updatedAt
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  @@index([resourceId])
+  @@index([resourceId, storeId])
+}
