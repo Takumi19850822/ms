@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("hq@example.com");
-  const [password, setPassword] = useState("pass1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -86,9 +86,6 @@ export default function LoginPage() {
         >
           {submitting ? "ログイン中..." : "ログイン"}
         </button>
-        <p style={{ margin: 0, color: "#4b5563", fontSize: 12 }}>
-          試験アカウント: hq@example.com / store-a@example.com / all-store@example.com
-        </p>
       </form>
     </main>
   );

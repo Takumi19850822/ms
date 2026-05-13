@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   const email = body.email?.trim() ?? "";
   const password = body.password ?? "";
 
-  const user = authenticate(email, password);
+  const user = await authenticate(email, password);
   if (!user) {
     return NextResponse.json({ message: "invalid credentials" }, { status: 401 });
   }

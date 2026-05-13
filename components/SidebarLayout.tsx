@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { MASTER_CATEGORIES, ORDER_CATEGORIES } from "@/lib/resources";
 import { SessionUser } from "@/lib/types";
@@ -30,7 +30,9 @@ function NavLink({ href, label, collapsed }: { href: string; label: string; coll
 }
 
 export function SidebarLayout({ children, session }: { children: React.ReactNode; session: SessionUser }) {
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const width = collapsed ? 72 : 268;
 
   const sidebarItems = useMemo(
@@ -40,6 +42,13 @@ export function SidebarLayout({ children, session }: { children: React.ReactNode
     }),
     [],
   );
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    await fetch("/api/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <div style={{ minHeight: "100vh", display: "flex" }}>
@@ -89,9 +98,40 @@ export function SidebarLayout({ children, session }: { children: React.ReactNode
               <div>{session.name}</div>
               <div>{session.email}</div>
               <div>role: {session.role}</div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 6,
+                  background: "#fff",
+                  height: 34,
+                  cursor: "pointer",
+                }}
+              >
+                {loggingOut ? "ログアウト中..." : "ログアウト"}
+              </button>
             </>
           ) : (
-            <div>{session.name.slice(0, 1)}</div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              title="ログアウト"
+              style={{
+                width: "100%",
+                border: "1px solid #d1d5db",
+                borderRadius: 6,
+                background: "#fff",
+                height: 34,
+                cursor: "pointer",
+              }}
+            >
+              退
+            </button>
           )}
         </section>
       </aside>

@@ -23,3 +23,14 @@ export type ResourceConfig = {
   title: string;
   kind: "orders" | "masters";
 };
+
+export type AppUserRecord = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  storeId: string | null;
+  isActive: boolean;
+  updatedAt: string;
+  version: number;
+};

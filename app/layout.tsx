@@ -8,8 +8,8 @@ const mPlus = M_PLUS_1({
 });
 
 export const metadata: Metadata = {
-  title: "メガスポーツ管理",
-  description: "メガスポーツ管理アプリ",
+  title: "MS",
+  description: "MS管理アプリ",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
