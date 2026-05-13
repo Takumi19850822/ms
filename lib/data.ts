@@ -1,6 +1,6 @@
 import { SessionUser, ResourceRecord } from "@/lib/types";
 import { RESOURCE_CONFIGS } from "@/lib/resources";
-import { db } from "@/lib/db";
+import { getDb } from "@/lib/db";
 
 const STORE_IDS = ["store-a", "store-b"];
 let schemaReady: Promise<void> | null = null;
@@ -23,6 +23,7 @@ function seedRecords(resourceId: string): ResourceRecord[] {
 async function ensureSchema() {
   if (!schemaReady) {
     schemaReady = (async () => {
+      const db = getDb();
       await db.query(`
         CREATE TABLE IF NOT EXISTS "ResourceRecord" (
           id TEXT PRIMARY KEY,
@@ -69,6 +70,7 @@ function toRecord(row: {
 
 async function ensureSeeded(resourceId: string) {
   await ensureSchema();
+  const db = getDb();
   const countResult = await db.query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM "ResourceRecord" WHERE "resourceId" = $1`,
     [resourceId],
@@ -89,6 +91,7 @@ async function ensureSeeded(resourceId: string) {
 
 export async function listResource(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
   await ensureSeeded(resourceId);
+  const db = getDb();
   const keyword = search.trim();
   const params: Array<string | null> = [resourceId];
   const where: string[] = [`"resourceId" = $1`];
@@ -127,6 +130,7 @@ export async function listResource(resourceId: string, user: SessionUser, search
 
 export async function createResource(resourceId: string, user: SessionUser): Promise<ResourceRecord> {
   await ensureSeeded(resourceId);
+  const db = getDb();
   const countResult = await db.query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM "ResourceRecord" WHERE "resourceId" = $1`,
     [resourceId],
@@ -158,6 +162,7 @@ export async function updateResource(
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note" | "version">,
 ): Promise<{ ok: true; record: ResourceRecord } | { ok: false; reason: "not_found" | "forbidden" | "version_conflict" }> {
   await ensureSeeded(resourceId);
+  const db = getDb();
   const targetResult = await db.query<{
     id: string;
     storeId: string | null;
