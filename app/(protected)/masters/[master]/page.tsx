@@ -19,5 +19,5 @@ export default async function MasterPage({ params }: Props) {
     notFound();
   }
   const initialRows = await listResource(current.resourceId, session, "");
-  return <ResourcePage title={current.title} resourceId={current.resourceId} initialRows={initialRows} />;
+  return <ResourcePage key={current.resourceId} title={current.title} resourceId={current.resourceId} initialRows={initialRows} />;
 }
