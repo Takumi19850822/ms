@@ -77,6 +77,10 @@ async function ensureSeeded(resourceId: string) {
 
 export async function listResource(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
   await ensureSeeded(resourceId);
+  return listResourceRecords(resourceId, user, search);
+}
+
+export async function listResourceRecords(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
   const supabase = getSupabase();
   const keyword = search.trim();
   let request = supabase
@@ -102,6 +106,26 @@ export async function listResource(resourceId: string, user: SessionUser, search
   }
 
   return (data ?? []).map(toRecord);
+}
+
+export async function getResourceRecord(resourceId: string, id: string, user: SessionUser): Promise<ResourceRecord | null> {
+  const supabase = getSupabase();
+  let request = supabase
+    .from("ResourceRecord")
+    .select("id, resourceId, code, name, storeId, note, updatedAt, version")
+    .eq("resourceId", resourceId)
+    .eq("id", id);
+
+  if (user.role === "store") {
+    request = request.eq("storeId", user.storeId);
+  }
+
+  const { data, error } = await request.maybeSingle<ResourceRow>();
+  if (error) {
+    throw error;
+  }
+
+  return data ? toRecord(data) : null;
 }
 
 export async function createResource(resourceId: string, user: SessionUser): Promise<ResourceRecord> {

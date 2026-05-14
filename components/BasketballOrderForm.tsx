@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
@@ -16,6 +18,29 @@ type SavedOrderRecord = {
   name: string;
   updatedAt: string;
   version: number;
+};
+
+type BasketballOrderFormData = {
+  values?: Record<string, string>;
+  orderType?: string;
+  creationType?: string;
+  numberSize?: string;
+  options?: Partial<{
+    shirtEnabled: boolean;
+    shirtBackNumber: boolean;
+    shirtTeamName: boolean;
+    shirtChestNumber: boolean;
+    shirtPersonalName: boolean;
+    pantsEnabled: boolean;
+    pantsNumber: boolean;
+    pantsTeamName: boolean;
+  }>;
+  detailRows?: DetailRow[];
+};
+
+type Props = {
+  initialRecord?: SavedOrderRecord;
+  initialOrder?: BasketballOrderFormData;
 };
 
 type FieldConfig = {
@@ -170,6 +195,26 @@ function createInitialValues() {
       otherCostsAmount: "",
     },
   );
+}
+
+function mergeInitialValues(initialValues?: Record<string, string>) {
+  return {
+    ...createInitialValues(),
+    ...(initialValues ?? {}),
+  };
+}
+
+function normalizeDetailRows(rows?: DetailRow[]) {
+  const normalized = rows
+    ?.filter((row) => row && typeof row === "object")
+    .map((row, index) => ({
+      id: Number.isFinite(row.id) ? row.id : index + 1,
+      number: row.number ?? "",
+      wearSize: row.wearSize ?? "",
+      pantsSize: row.pantsSize ?? "",
+    }));
+
+  return normalized?.length ? normalized : [{ id: 1, number: "", wearSize: "", pantsSize: "" }];
 }
 
 function parseAmount(value: string) {
@@ -406,24 +451,26 @@ function SummaryTable({
   );
 }
 
-export function BasketballOrderForm() {
-  const [values, setValues] = useState(createInitialValues);
-  const [savedRecord, setSavedRecord] = useState<SavedOrderRecord | null>(null);
+export function BasketballOrderForm({ initialRecord, initialOrder }: Props) {
+  const router = useRouter();
+  const initialOptions = initialOrder?.options ?? {};
+  const [values, setValues] = useState(() => mergeInitialValues(initialOrder?.values));
+  const [savedRecord, setSavedRecord] = useState<SavedOrderRecord | null>(initialRecord ?? null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
-  const [orderType, setOrderType] = useState("新規");
-  const [creationType, setCreationType] = useState("デザイン作成");
-  const [numberSize, setNumberSize] = useState("大人サイズ");
-  const [shirtEnabled, setShirtEnabled] = useState(true);
-  const [shirtBackNumber, setShirtBackNumber] = useState(false);
-  const [shirtTeamName, setShirtTeamName] = useState(false);
-  const [shirtChestNumber, setShirtChestNumber] = useState(false);
-  const [shirtPersonalName, setShirtPersonalName] = useState(false);
-  const [pantsEnabled, setPantsEnabled] = useState(false);
-  const [pantsNumber, setPantsNumber] = useState(false);
-  const [pantsTeamName, setPantsTeamName] = useState(false);
-  const [detailRows, setDetailRows] = useState<DetailRow[]>([{ id: 1, number: "", wearSize: "", pantsSize: "" }]);
+  const [orderType, setOrderType] = useState(initialOrder?.orderType ?? "新規");
+  const [creationType, setCreationType] = useState(initialOrder?.creationType ?? "デザイン作成");
+  const [numberSize, setNumberSize] = useState(initialOrder?.numberSize ?? "大人サイズ");
+  const [shirtEnabled, setShirtEnabled] = useState(initialOptions.shirtEnabled ?? true);
+  const [shirtBackNumber, setShirtBackNumber] = useState(initialOptions.shirtBackNumber ?? false);
+  const [shirtTeamName, setShirtTeamName] = useState(initialOptions.shirtTeamName ?? false);
+  const [shirtChestNumber, setShirtChestNumber] = useState(initialOptions.shirtChestNumber ?? false);
+  const [shirtPersonalName, setShirtPersonalName] = useState(initialOptions.shirtPersonalName ?? false);
+  const [pantsEnabled, setPantsEnabled] = useState(initialOptions.pantsEnabled ?? false);
+  const [pantsNumber, setPantsNumber] = useState(initialOptions.pantsNumber ?? false);
+  const [pantsTeamName, setPantsTeamName] = useState(initialOptions.pantsTeamName ?? false);
+  const [detailRows, setDetailRows] = useState<DetailRow[]>(() => normalizeDetailRows(initialOrder?.detailRows));
 
   const price = useMemo(() => {
     const shirtQuantity = shirtEnabled ? detailRows.filter((row) => row.wearSize.trim() || row.number.trim()).length : 0;
@@ -506,8 +553,12 @@ export function BasketballOrderForm() {
     }
 
     const data = (await response.json()) as { record: SavedOrderRecord };
+    const wasNewRecord = !savedRecord;
     setSavedRecord(data.record);
     setSaveMessage(savedRecord ? "上書き保存しました。" : "保存しました。");
+    if (wasNewRecord) {
+      router.replace(`/orders/basketball/${data.record.id}`);
+    }
   }
 
   return (
@@ -524,6 +575,17 @@ export function BasketballOrderForm() {
           ) : null}
         </div>
         <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+          <Link
+            href="/orders/basketball"
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: 6,
+              background: "#fff",
+              padding: "7px 12px",
+            }}
+          >
+            一覧へ戻る
+          </Link>
           <button
             type="button"
             onClick={() => void saveOrder()}
