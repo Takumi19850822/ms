@@ -141,6 +141,36 @@ export async function createResource(resourceId: string, user: SessionUser): Pro
   return toRecord(data);
 }
 
+export async function createResourceFromPayload(
+  resourceId: string,
+  user: SessionUser,
+  payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note">,
+): Promise<ResourceRecord> {
+  const supabase = getSupabase();
+  const storeId = user.role === "store" ? user.storeId : payload.storeId;
+
+  const { data, error } = await supabase
+    .from("ResourceRecord")
+    .insert({
+      id: crypto.randomUUID(),
+      resourceId,
+      code: payload.code,
+      name: payload.name,
+      storeId,
+      note: payload.note,
+      updatedAt: new Date().toISOString(),
+      version: 1,
+    })
+    .select("id, resourceId, code, name, storeId, note, updatedAt, version")
+    .single<ResourceRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return toRecord(data);
+}
+
 export async function updateResource(
   resourceId: string,
   id: string,
