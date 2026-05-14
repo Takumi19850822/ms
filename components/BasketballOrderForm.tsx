@@ -262,6 +262,48 @@ function TextField({
   );
 }
 
+function InlineTextField({
+  name,
+  label,
+  value,
+  onChange,
+  width,
+  type,
+  readOnly,
+  placeholder,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  onChange: (name: string, value: string) => void;
+  width: string;
+  type?: "date" | "email" | "tel";
+  readOnly?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <label style={{ ...labelStyle, width, flex: "0 0 auto" }}>
+      <span>{label}</span>
+      <input
+        type={type ?? "text"}
+        value={value}
+        readOnly={readOnly}
+        placeholder={placeholder}
+        onChange={(event) => onChange(name, event.target.value)}
+        style={{ ...inputStyle, background: readOnly ? "#f9fafb" : "#fff" }}
+      />
+    </label>
+  );
+}
+
+function FormLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
+      {children}
+    </div>
+  );
+}
+
 function RadioGroup({
   label,
   value,
@@ -606,23 +648,150 @@ export function BasketballOrderForm({ initialRecord, initialOrder }: Props) {
         </div>
       </div>
 
-      <Section title="基本情報">
-        <FieldGrid>
-          {baseFields.map((field) => (
-            <TextField key={field.name} field={field} value={values[field.name] ?? ""} onChange={updateValue} />
-          ))}
-        </FieldGrid>
-        <div style={gridStyle}>
-          <RadioGroup label="新規・追加" value={orderType} options={["新規", "追加"]} onChange={setOrderType} />
-          <RadioGroup label="作成区分" value={creationType} options={["デザイン作成", "製品作成"]} onChange={setCreationType} />
+      <Section title="オーダー登録">
+        <FormLine>
+          <InlineTextField
+            name="orderDate"
+            label="注文日"
+            value={values.orderDate}
+            onChange={updateValue}
+            width="12ch"
+            type="date"
+          />
+        </FormLine>
+
+        <FormLine>
+          <InlineTextField name="storeCode" label="店番" value={values.storeCode} onChange={updateValue} width="6ch" />
+          <InlineTextField name="storeName" label="店名" value={values.storeName} onChange={updateValue} width="18ch" />
+          <InlineTextField
+            name="storePhone"
+            label="電話番号"
+            value={values.storePhone}
+            onChange={updateValue}
+            width="18ch"
+            type="tel"
+          />
+          <InlineTextField name="staffName" label="担当者" value={values.staffName} onChange={updateValue} width="6ch" />
+        </FormLine>
+
+        <FormLine>
+          <div style={{ width: 160, flex: "0 0 auto" }}>
+            <RadioGroup label="新規・追加区分" value={orderType} options={["新規", "追加"]} onChange={setOrderType} />
+          </div>
+          <InlineTextField name="previousPoNo" label="前回のP.O.No" value={values.previousPoNo} onChange={updateValue} width="18ch" />
+          <InlineTextField
+            name="megaSportsPoNo"
+            label="メガスポーツ用P.O.No"
+            value={values.megaSportsPoNo}
+            onChange={updateValue}
+            width="20ch"
+          />
+          <InlineTextField
+            name="watasakuOrderNo"
+            label="渡作発注書No"
+            value={values.watasakuOrderNo}
+            onChange={updateValue}
+            width="18ch"
+          />
+        </FormLine>
+
+        <FormLine>
+          <InlineTextField
+            name="deliveryEstimate"
+            label="お渡し目安"
+            value={values.deliveryEstimate}
+            onChange={updateValue}
+            width="14ch"
+            placeholder="YYYY/MM/DD"
+          />
+        </FormLine>
+
+        <FormLine>
+          <InlineTextField name="generation" label="世代" value={values.generation} onChange={updateValue} width="10ch" />
+          <InlineTextField name="category" label="カテゴリ" value={values.category} onChange={updateValue} width="10ch" readOnly />
+          <InlineTextField name="gender" label="性別" value={values.gender} onChange={updateValue} width="10ch" />
+        </FormLine>
+
+        <FormLine>
+          <div style={{ width: 260, flex: "0 0 auto" }}>
+            <RadioGroup label="作成区分" value={creationType} options={["デザイン作成", "製品作成"]} onChange={setCreationType} />
+          </div>
+        </FormLine>
+
+        <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
+          <h3 style={{ margin: 0, fontSize: 16 }}>顧客情報</h3>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "120px minmax(220px, 1fr) 120px minmax(220px, 1fr)",
+              border: "1px solid #d1d5db",
+              alignItems: "stretch",
+            }}
+          >
+            {[
+              { label: "フリガナ", name: "customerKana" },
+              { label: "フリガナ", name: "teamKana" },
+              { label: "お客様名", name: "customerName" },
+              { label: "チーム名", name: "teamName" },
+              { label: "電話番号 / ファックス", name: "customerPhone" },
+              { label: "メールアドレス", name: "email", type: "email" as const },
+            ].map((field, index) => (
+              <div key={`${field.name}-${index}`} style={{ display: "contents" }}>
+                <div
+                  style={{
+                    borderRight: "1px solid #d1d5db",
+                    borderBottom: "1px solid #d1d5db",
+                    background: index % 2 === 0 ? "#c084fc" : "#fef08a",
+                    padding: 8,
+                    fontWeight: 700,
+                  }}
+                >
+                  {field.label}
+                </div>
+                <input
+                  type={field.type ?? "text"}
+                  value={values[field.name] ?? ""}
+                  onChange={(event) => updateValue(field.name, event.target.value)}
+                  style={{
+                    border: 0,
+                    borderRight: index % 2 === 0 ? "1px solid #d1d5db" : 0,
+                    borderBottom: "1px solid #d1d5db",
+                    padding: "0 10px",
+                    minHeight: 36,
+                  }}
+                />
+              </div>
+            ))}
+            <div
+              style={{
+                borderRight: "1px solid #d1d5db",
+                background: "#d1d5db",
+                padding: 8,
+                fontWeight: 700,
+              }}
+            >
+              フリー入力
+            </div>
+            <textarea
+              value={values.freeText}
+              onChange={(event) => updateValue("freeText", event.target.value)}
+              rows={3}
+              style={{
+                gridColumn: "span 3",
+                border: 0,
+                padding: "8px 10px",
+                resize: "vertical",
+              }}
+            />
+          </div>
         </div>
         <label style={labelStyle}>
-          <span>フリー入力</span>
-          <textarea
-            value={values.freeText}
-            onChange={(event) => updateValue("freeText", event.target.value)}
-            rows={4}
-            style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "8px 10px", resize: "vertical" }}
+          <span>FAX</span>
+          <input
+            type="tel"
+            value={values.fax}
+            onChange={(event) => updateValue("fax", event.target.value)}
+            style={{ ...inputStyle, width: "18ch" }}
           />
         </label>
       </Section>
