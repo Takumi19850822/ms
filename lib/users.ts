@@ -5,8 +5,15 @@ import { prisma } from "@/lib/prisma";
 const ADMIN_EMAIL = "hq@example.com";
 const ADMIN_PASSWORD = "pass1234";
 
-type AppUserRow = AppUserRecord & {
+type AppUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  storeId: string | null;
+  isActive: boolean;
   updatedAt: Date;
+  version: number;
   passwordHash?: string;
 };
 
