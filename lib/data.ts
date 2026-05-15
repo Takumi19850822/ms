@@ -1,6 +1,6 @@
 import { SessionUser, ResourceRecord } from "@/lib/types";
 import { RESOURCE_CONFIGS } from "@/lib/resources";
-import { getSupabase } from "@/lib/supabase";
+import { prisma } from "@/lib/prisma";
 
 const STORE_IDS = ["store-a", "store-b"];
 
@@ -11,7 +11,7 @@ type ResourceRow = {
   name: string;
   storeId: string | null;
   note: string;
-  updatedAt: string;
+  updatedAt: Date;
   version: number;
 };
 
@@ -43,22 +43,16 @@ function toRecord(row: ResourceRow): ResourceRecord {
 }
 
 async function ensureSeeded(resourceId: string) {
-  const supabase = getSupabase();
-  const { count, error: countError } = await supabase
-    .from("ResourceRecord")
-    .select("id", { count: "exact", head: true })
-    .eq("resourceId", resourceId);
-
-  if (countError) {
-    throw countError;
-  }
-  if ((count ?? 0) > 0) {
+  const count = await prisma.resourceRecord.count({
+    where: { resourceId },
+  });
+  if (count > 0) {
     return;
   }
 
   const seeds = seedRecords(resourceId);
-  const { error: insertError } = await supabase.from("ResourceRecord").insert(
-    seeds.map((item) => ({
+  await prisma.resourceRecord.createMany({
+    data: seeds.map((item) => ({
       id: item.id,
       resourceId,
       code: item.code,
@@ -68,11 +62,7 @@ async function ensureSeeded(resourceId: string) {
       updatedAt: item.updatedAt,
       version: item.version,
     })),
-  );
-
-  if (insertError) {
-    throw insertError;
-  }
+  });
 }
 
 export async function listResource(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
@@ -81,71 +71,71 @@ export async function listResource(resourceId: string, user: SessionUser, search
 }
 
 export async function listResourceRecords(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
-  const supabase = getSupabase();
   const keyword = search.trim();
-  let request = supabase
-    .from("ResourceRecord")
-    .select("id, resourceId, code, name, storeId, note, updatedAt, version")
-    .eq("resourceId", resourceId)
-    .order("updatedAt", { ascending: false });
+  const rows = await prisma.resourceRecord.findMany({
+    where: {
+      resourceId,
+      ...(user.role === "store" ? { storeId: user.storeId } : {}),
+      ...(keyword
+        ? {
+            OR: [
+              { code: { contains: keyword, mode: "insensitive" } },
+              { name: { contains: keyword, mode: "insensitive" } },
+              { note: { contains: keyword, mode: "insensitive" } },
+              { storeId: { contains: keyword, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      resourceId: true,
+      code: true,
+      name: true,
+      storeId: true,
+      note: true,
+      updatedAt: true,
+      version: true,
+    },
+  });
 
-  if (user.role === "store") {
-    request = request.eq("storeId", user.storeId);
-  }
-
-  if (keyword) {
-    const escaped = keyword.replaceAll(",", "\\,");
-    request = request.or(
-      `code.ilike.%${escaped}%,name.ilike.%${escaped}%,note.ilike.%${escaped}%,storeId.ilike.%${escaped}%`,
-    );
-  }
-
-  const { data, error } = await request.returns<ResourceRow[]>();
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []).map(toRecord);
+  return rows.map(toRecord);
 }
 
 export async function getResourceRecord(resourceId: string, id: string, user: SessionUser): Promise<ResourceRecord | null> {
-  const supabase = getSupabase();
-  let request = supabase
-    .from("ResourceRecord")
-    .select("id, resourceId, code, name, storeId, note, updatedAt, version")
-    .eq("resourceId", resourceId)
-    .eq("id", id);
-
-  if (user.role === "store") {
-    request = request.eq("storeId", user.storeId);
-  }
-
-  const { data, error } = await request.maybeSingle<ResourceRow>();
-  if (error) {
-    throw error;
-  }
+  const data = await prisma.resourceRecord.findFirst({
+    where: {
+      resourceId,
+      id,
+      ...(user.role === "store" ? { storeId: user.storeId } : {}),
+    },
+    select: {
+      id: true,
+      resourceId: true,
+      code: true,
+      name: true,
+      storeId: true,
+      note: true,
+      updatedAt: true,
+      version: true,
+    },
+  });
 
   return data ? toRecord(data) : null;
 }
 
 export async function createResource(resourceId: string, user: SessionUser): Promise<ResourceRecord> {
   await ensureSeeded(resourceId);
-  const supabase = getSupabase();
-  const { count, error: countError } = await supabase
-    .from("ResourceRecord")
-    .select("id", { count: "exact", head: true })
-    .eq("resourceId", resourceId);
+  const count = await prisma.resourceRecord.count({
+    where: { resourceId },
+  });
 
-  if (countError) {
-    throw countError;
-  }
-
-  const nextNumber = (count ?? 0) + 1;
+  const nextNumber = count + 1;
   const storeId = user.role === "store" ? user.storeId : "store-a";
 
-  const { data, error } = await supabase
-    .from("ResourceRecord")
-    .insert({
+  const data = await prisma.resourceRecord.create({
+    data: {
       id: crypto.randomUUID(),
       resourceId,
       code: `${resourceId.toUpperCase().slice(0, 8)}-${nextNumber}`,
@@ -154,13 +144,18 @@ export async function createResource(resourceId: string, user: SessionUser): Pro
       note: "",
       updatedAt: new Date().toISOString(),
       version: 1,
-    })
-    .select("id, resourceId, code, name, storeId, note, updatedAt, version")
-    .single<ResourceRow>();
-
-  if (error) {
-    throw error;
-  }
+    },
+    select: {
+      id: true,
+      resourceId: true,
+      code: true,
+      name: true,
+      storeId: true,
+      note: true,
+      updatedAt: true,
+      version: true,
+    },
+  });
 
   return toRecord(data);
 }
@@ -170,12 +165,10 @@ export async function createResourceFromPayload(
   user: SessionUser,
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note">,
 ): Promise<ResourceRecord> {
-  const supabase = getSupabase();
   const storeId = user.role === "store" ? user.storeId : payload.storeId;
 
-  const { data, error } = await supabase
-    .from("ResourceRecord")
-    .insert({
+  const data = await prisma.resourceRecord.create({
+    data: {
       id: crypto.randomUUID(),
       resourceId,
       code: payload.code,
@@ -184,13 +177,18 @@ export async function createResourceFromPayload(
       note: payload.note,
       updatedAt: new Date().toISOString(),
       version: 1,
-    })
-    .select("id, resourceId, code, name, storeId, note, updatedAt, version")
-    .single<ResourceRow>();
-
-  if (error) {
-    throw error;
-  }
+    },
+    select: {
+      id: true,
+      resourceId: true,
+      code: true,
+      name: true,
+      storeId: true,
+      note: true,
+      updatedAt: true,
+      version: true,
+    },
+  });
 
   return toRecord(data);
 }
@@ -202,17 +200,10 @@ export async function updateResource(
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note" | "version">,
 ): Promise<{ ok: true; record: ResourceRecord } | { ok: false; reason: "not_found" | "forbidden" | "version_conflict" }> {
   await ensureSeeded(resourceId);
-  const supabase = getSupabase();
-  const { data: target, error: targetError } = await supabase
-    .from("ResourceRecord")
-    .select("id, storeId, version")
-    .eq("id", id)
-    .eq("resourceId", resourceId)
-    .maybeSingle<Pick<ResourceRow, "id" | "storeId" | "version">>();
-
-  if (targetError) {
-    throw targetError;
-  }
+  const target = await prisma.resourceRecord.findFirst({
+    where: { id, resourceId },
+    select: { id: true, storeId: true, version: true },
+  });
   if (!target) {
     return { ok: false, reason: "not_found" };
   }
@@ -223,23 +214,27 @@ export async function updateResource(
     return { ok: false, reason: "version_conflict" };
   }
 
-  const { data, error } = await supabase
-    .from("ResourceRecord")
-    .update({
+  const data = await prisma.resourceRecord.update({
+    where: { id },
+    data: {
       code: payload.code,
       name: payload.name,
       storeId: user.role === "store" ? user.storeId : payload.storeId,
       note: payload.note,
       version: target.version + 1,
       updatedAt: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .select("id, resourceId, code, name, storeId, note, updatedAt, version")
-    .single<ResourceRow>();
-
-  if (error) {
-    throw error;
-  }
+    },
+    select: {
+      id: true,
+      resourceId: true,
+      code: true,
+      name: true,
+      storeId: true,
+      note: true,
+      updatedAt: true,
+      version: true,
+    },
+  });
 
   return { ok: true, record: toRecord(data) };
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 
 type DetailRow = {
   id: number;
@@ -59,25 +59,57 @@ const inputStyle: CSSProperties = {
   background: "#fff",
 };
 
-const labelStyle: CSSProperties = {
-  display: "grid",
-  gap: 6,
-  minWidth: 0,
-};
-
 const sectionStyle: CSSProperties = {
   border: "1px solid #e5e7eb",
   borderRadius: 10,
   padding: 16,
   display: "grid",
-  gap: 14,
+  gap: 8,
   background: "#fff",
 };
 
 const gridStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+  borderTop: "1px solid #d1d5db",
+  borderLeft: "1px solid #d1d5db",
+};
+
+const slipFieldStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "136px minmax(0, 1fr)",
+  minWidth: 0,
+  borderRight: "1px solid #d1d5db",
+  borderBottom: "1px solid #d1d5db",
+  background: "#fff",
+};
+
+const slipLabelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  minHeight: 30,
+  padding: "1px 10px",
+  background: "#f3f4f6",
+  borderRight: "1px solid #d1d5db",
+  fontWeight: 700,
+  lineHeight: 1.35,
+  whiteSpace: "pre-line",
+};
+
+const slipControlStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  minWidth: 0,
+  padding: 0,
+};
+
+const slipInputStyle: CSSProperties = {
+  ...inputStyle,
+  height: "100%",
+  minHeight: 30,
+  border: 0,
+  borderRadius: 0,
+  background: "transparent",
 };
 
 const baseFields: FieldConfig[] = [
@@ -103,70 +135,70 @@ const baseFields: FieldConfig[] = [
 ];
 
 const shirtFields: FieldConfig[] = [
-  { name: "shirtDesignNo", label: "シャツデザインNo." },
-  { name: "shirtBodyPrice", label: "シャツ本体価格" },
-  { name: "shirtColorA", label: "シャツA色" },
-  { name: "shirtColorB", label: "シャツB色" },
-  { name: "shirtColorC", label: "シャツC色" },
+  { name: "shirtDesignNo", label: "デザインNo." },
+  { name: "shirtBodyPrice", label: "本体価格" },
+  { name: "shirtColorA", label: "A色" },
+  { name: "shirtColorB", label: "B色" },
+  { name: "shirtColorC", label: "C色" },
 ];
 
 const shirtNumberFields: FieldConfig[] = [
-  { name: "backNumberFont", label: "背番号フォント" },
-  { name: "backNumberFillColor", label: "背番号フォント中カラー" },
-  { name: "backNumberInnerBorder", label: "背番号フォントフチ内" },
-  { name: "backNumberOuterBorder", label: "背番号フォントフチ外" },
+  { name: "backNumberFont", label: "フォント" },
+  { name: "backNumberFillColor", label: "中カラー" },
+  { name: "backNumberInnerBorder", label: "フチ内" },
+  { name: "backNumberOuterBorder", label: "フチ外" },
 ];
 
 const shirtTeamFields: FieldConfig[] = [
-  { name: "shirtTeamFont", label: "チーム名フォント" },
-  { name: "shirtTeamFillColor", label: "チーム名フォント中カラー" },
-  { name: "shirtTeamInnerBorder", label: "チーム名フォントフチ内" },
-  { name: "shirtTeamOuterBorder", label: "チーム名フォントフチ外" },
-  { name: "shirtTeamPrintPosition", label: "チーム名プリント位置" },
-  { name: "shirtTeamStyle", label: "チーム名スタイル" },
+  { name: "shirtTeamFont", label: "フォント" },
+  { name: "shirtTeamFillColor", label: "中カラー" },
+  { name: "shirtTeamInnerBorder", label: "フチ内" },
+  { name: "shirtTeamOuterBorder", label: "フチ外" },
+  { name: "shirtTeamPrintPosition", label: "プリント位置" },
+  { name: "shirtTeamStyle", label: "スタイル" },
 ];
 
 const chestNumberFields: FieldConfig[] = [
-  { name: "chestNumberFont", label: "胸番号フォント" },
-  { name: "chestNumberFillColor", label: "胸番号フォント中カラー" },
-  { name: "chestNumberInnerBorder", label: "胸番号フォントフチ内" },
-  { name: "chestNumberOuterBorder", label: "胸番号フォントフチ外" },
-  { name: "chestNumberPrintPosition", label: "胸番号プリント位置" },
+  { name: "chestNumberFont", label: "フォント" },
+  { name: "chestNumberFillColor", label: "中カラー" },
+  { name: "chestNumberInnerBorder", label: "フチ内" },
+  { name: "chestNumberOuterBorder", label: "フチ外" },
+  { name: "chestNumberPrintPosition", label: "プリント位置" },
 ];
 
 const personalNameFields: FieldConfig[] = [
-  { name: "personalNameFont", label: "個人名フォント" },
-  { name: "personalNameFillColor", label: "個人名フォント中カラー" },
-  { name: "personalNameInnerBorder", label: "個人名フォントフチ内" },
-  { name: "personalNameOuterBorder", label: "個人名フォントフチ外" },
-  { name: "personalNamePrintPosition", label: "個人名プリント位置" },
-  { name: "personalNameStyle", label: "個人名スタイル" },
+  { name: "personalNameFont", label: "フォント" },
+  { name: "personalNameFillColor", label: "中カラー" },
+  { name: "personalNameInnerBorder", label: "フチ内" },
+  { name: "personalNameOuterBorder", label: "フチ外" },
+  { name: "personalNamePrintPosition", label: "プリント位置" },
+  { name: "personalNameStyle", label: "スタイル" },
 ];
 
 const pantsFields: FieldConfig[] = [
-  { name: "pantsDesignNo", label: "バスケットパンツデザインNo" },
-  { name: "pantsBodyPrice", label: "バスケットパンツ本体価格" },
-  { name: "pantsColorA", label: "バスケットパンツA色" },
-  { name: "pantsColorB", label: "バスケットパンツB色" },
-  { name: "pantsColorC", label: "バスケットパンツC色" },
+  { name: "pantsDesignNo", label: "デザインNo" },
+  { name: "pantsBodyPrice", label: "本体価格" },
+  { name: "pantsColorA", label: "A色" },
+  { name: "pantsColorB", label: "B色" },
+  { name: "pantsColorC", label: "C色" },
 ];
 
 const pantsNumberFields: FieldConfig[] = [
-  { name: "pantsNumberFont", label: "パンツ番号フォント" },
-  { name: "pantsNumberFillColor", label: "パンツ番号中カラー" },
-  { name: "pantsNumberInnerBorder", label: "パンツ番号フチ内" },
-  { name: "pantsNumberOuterBorder", label: "パンツ番号フチ外" },
-  { name: "pantsNumberPrintPosition", label: "パンツ番号プリント位置" },
+  { name: "pantsNumberFont", label: "フォント" },
+  { name: "pantsNumberFillColor", label: "中カラー" },
+  { name: "pantsNumberInnerBorder", label: "フチ内" },
+  { name: "pantsNumberOuterBorder", label: "フチ外" },
+  { name: "pantsNumberPrintPosition", label: "プリント位置" },
 ];
 
 const pantsTeamFields: FieldConfig[] = [
-  { name: "pantsTeamFont", label: "パンツチーム名フォント" },
-  { name: "pantsTeamFillColor", label: "パンツチーム名中カラー" },
-  { name: "pantsTeamInnerBorder", label: "パンツチーム名フチ内" },
-  { name: "pantsTeamOuterBorder", label: "パンツチーム名フチ外" },
-  { name: "pantsTeamPrintPosition", label: "パンツチーム名プリント位置" },
-  { name: "pantsTeamName", label: "パンツチーム名" },
-  { name: "pantsTeamStyle", label: "パンツチーム名スタイル" },
+  { name: "pantsTeamFont", label: "フォント" },
+  { name: "pantsTeamFillColor", label: "中カラー" },
+  { name: "pantsTeamInnerBorder", label: "フチ内" },
+  { name: "pantsTeamOuterBorder", label: "フチ外" },
+  { name: "pantsTeamPrintPosition", label: "プリント位置" },
+  { name: "pantsTeamName", label: "チーム名" },
+  { name: "pantsTeamStyle", label: "スタイル" },
 ];
 
 const allFields = [
@@ -226,6 +258,21 @@ function formatAmount(value: number) {
   return new Intl.NumberFormat("ja-JP").format(value);
 }
 
+function focusNextInput(event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+    return;
+  }
+
+  event.preventDefault();
+  const controls = Array.from(
+    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      "input:not([type='hidden']):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled])",
+    ),
+  );
+  const currentIndex = controls.indexOf(event.currentTarget);
+  controls[currentIndex + 1]?.focus();
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={sectionStyle}>
@@ -239,6 +286,23 @@ function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div style={gridStyle}>{children}</div>;
 }
 
+function SlipField({
+  label,
+  children,
+  style,
+}: {
+  label: string;
+  children: React.ReactNode;
+  style?: CSSProperties;
+}) {
+  return (
+    <label style={{ ...slipFieldStyle, ...style }}>
+      <span style={slipLabelStyle}>{label}</span>
+      <span style={slipControlStyle}>{children}</span>
+    </label>
+  );
+}
+
 function TextField({
   field,
   value,
@@ -249,16 +313,16 @@ function TextField({
   onChange: (name: string, value: string) => void;
 }) {
   return (
-    <label style={labelStyle}>
-      <span>{field.label}</span>
+    <SlipField label={field.label}>
       <input
         type={field.type ?? "text"}
         value={value}
         readOnly={field.readOnly}
+        onKeyDown={focusNextInput}
         onChange={(event) => onChange(field.name, event.target.value)}
-        style={{ ...inputStyle, background: field.readOnly ? "#f9fafb" : "#fff" }}
+        style={{ ...slipInputStyle, background: field.readOnly ? "#f9fafb" : "#fff" }}
       />
-    </label>
+    </SlipField>
   );
 }
 
@@ -271,6 +335,7 @@ function InlineTextField({
   type,
   readOnly,
   placeholder,
+  style,
 }: {
   name: string;
   label: string;
@@ -280,27 +345,81 @@ function InlineTextField({
   type?: "date" | "email" | "tel";
   readOnly?: boolean;
   placeholder?: string;
+  style?: CSSProperties;
 }) {
   return (
-    <label style={{ ...labelStyle, width, flex: "0 0 auto" }}>
-      <span>{label}</span>
+    <SlipField label={label} style={{ minWidth: width, ...style }}>
       <input
         type={type ?? "text"}
         value={value}
         readOnly={readOnly}
         placeholder={placeholder}
+        onKeyDown={focusNextInput}
         onChange={(event) => onChange(name, event.target.value)}
-        style={{ ...inputStyle, background: readOnly ? "#f9fafb" : "#fff" }}
+        style={{ ...slipInputStyle, background: readOnly ? "#f9fafb" : "#fff" }}
       />
-    </label>
+    </SlipField>
   );
 }
 
-function FormLine({ children }: { children: React.ReactNode }) {
+function FormLine({ children, withTopBorder = true }: { children: React.ReactNode; withTopBorder?: boolean }) {
+  return <div style={{ ...gridStyle, borderTop: withTopBorder ? gridStyle.borderTop : 0 }}>{children}</div>;
+}
+
+function TextAreaField({
+  name,
+  label,
+  value,
+  onChange,
+  rows = 3,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  onChange: (name: string, value: string) => void;
+  rows?: number;
+}) {
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
-      {children}
-    </div>
+    <SlipField label={label} style={{ gridColumn: "1 / -1" }}>
+      <textarea
+        value={value}
+        onKeyDown={focusNextInput}
+        onChange={(event) => onChange(name, event.target.value)}
+        rows={rows}
+        style={{
+          ...slipInputStyle,
+          height: "auto",
+          minHeight: 72,
+          padding: "8px 10px",
+          resize: "vertical",
+        }}
+      />
+    </SlipField>
+  );
+}
+
+function RadioField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <SlipField label={label}>
+      <span style={{ display: "flex", gap: 14, flexWrap: "wrap", padding: "0 10px" }}>
+        {options.map((option) => (
+          <label key={option} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="radio" checked={value === option} onChange={() => onChange(option)} />
+            {option}
+          </label>
+        ))}
+      </span>
+    </SlipField>
   );
 }
 
@@ -373,14 +492,29 @@ function DetailRowsTable({
           <tbody>
             {rows.map((row) => (
               <tr key={row.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                <td style={{ padding: 8 }}>
-                  <input value={row.number} onChange={(event) => onChange(row.id, "number", event.target.value)} style={inputStyle} />
+                <td style={{ padding: 0, borderRight: "1px solid #f3f4f6" }}>
+                  <input
+                    value={row.number}
+                    onKeyDown={focusNextInput}
+                    onChange={(event) => onChange(row.id, "number", event.target.value)}
+                    style={slipInputStyle}
+                  />
                 </td>
-                <td style={{ padding: 8 }}>
-                  <input value={row.wearSize} onChange={(event) => onChange(row.id, "wearSize", event.target.value)} style={inputStyle} />
+                <td style={{ padding: 0, borderRight: "1px solid #f3f4f6" }}>
+                  <input
+                    value={row.wearSize}
+                    onKeyDown={focusNextInput}
+                    onChange={(event) => onChange(row.id, "wearSize", event.target.value)}
+                    style={slipInputStyle}
+                  />
                 </td>
-                <td style={{ padding: 8 }}>
-                  <input value={row.pantsSize} onChange={(event) => onChange(row.id, "pantsSize", event.target.value)} style={inputStyle} />
+                <td style={{ padding: 0, borderRight: "1px solid #f3f4f6" }}>
+                  <input
+                    value={row.pantsSize}
+                    onKeyDown={focusNextInput}
+                    onChange={(event) => onChange(row.id, "pantsSize", event.target.value)}
+                    style={slipInputStyle}
+                  />
                 </td>
                 <td style={{ padding: 8 }}>
                   <button
@@ -649,151 +783,96 @@ export function BasketballOrderForm({ initialRecord, initialOrder }: Props) {
       </div>
 
       <Section title="オーダー登録">
-        <FormLine>
-          <InlineTextField
-            name="orderDate"
-            label="注文日"
-            value={values.orderDate}
-            onChange={updateValue}
-            width="12ch"
-            type="date"
-          />
-        </FormLine>
+        <div style={{ display: "grid", gap: 0 }}>
+          <FormLine>
+            <InlineTextField
+              name="orderDate"
+              label="注文日"
+              value={values.orderDate}
+              onChange={updateValue}
+              width="12ch"
+              type="date"
+            />
+            <InlineTextField name="staffName" label="担当者" value={values.staffName} onChange={updateValue} width="8ch" />
+          </FormLine>
 
-        <FormLine>
-          <InlineTextField name="storeCode" label="店番" value={values.storeCode} onChange={updateValue} width="6ch" />
-          <InlineTextField name="storeName" label="店名" value={values.storeName} onChange={updateValue} width="18ch" />
-          <InlineTextField
-            name="storePhone"
-            label="電話番号"
-            value={values.storePhone}
-            onChange={updateValue}
-            width="18ch"
-            type="tel"
-          />
-          <InlineTextField name="staffName" label="担当者" value={values.staffName} onChange={updateValue} width="6ch" />
-        </FormLine>
+          <FormLine withTopBorder={false}>
+            <InlineTextField name="storeCode" label="店番" value={values.storeCode} onChange={updateValue} width="6ch" />
+            <InlineTextField name="storeName" label="店名" value={values.storeName} onChange={updateValue} width="18ch" />
+            <InlineTextField
+              name="storePhone"
+              label="電話番号"
+              value={values.storePhone}
+              onChange={updateValue}
+              width="18ch"
+              type="tel"
+            />
+          </FormLine>
 
-        <FormLine>
-          <div style={{ width: 160, flex: "0 0 auto" }}>
-            <RadioGroup label="新規・追加区分" value={orderType} options={["新規", "追加"]} onChange={setOrderType} />
-          </div>
-          <InlineTextField name="previousPoNo" label="前回のP.O.No" value={values.previousPoNo} onChange={updateValue} width="18ch" />
-          <InlineTextField
-            name="megaSportsPoNo"
-            label="メガスポーツ用P.O.No"
-            value={values.megaSportsPoNo}
-            onChange={updateValue}
-            width="20ch"
-          />
-          <InlineTextField
-            name="watasakuOrderNo"
-            label="渡作発注書No"
-            value={values.watasakuOrderNo}
-            onChange={updateValue}
-            width="18ch"
-          />
-        </FormLine>
+          <FormLine withTopBorder={false}>
+            <RadioField label="新規・追加区分" value={orderType} options={["新規", "追加"]} onChange={setOrderType} />
+            <InlineTextField name="previousPoNo" label="前回のP.O.No" value={values.previousPoNo} onChange={updateValue} width="18ch" />
+            <InlineTextField
+              name="megaSportsPoNo"
+              label="メガスポーツ用P.O.No"
+              value={values.megaSportsPoNo}
+              onChange={updateValue}
+              width="20ch"
+            />
+          </FormLine>
 
-        <FormLine>
-          <InlineTextField
-            name="deliveryEstimate"
-            label="お渡し目安"
-            value={values.deliveryEstimate}
-            onChange={updateValue}
-            width="14ch"
-            placeholder="YYYY/MM/DD"
-          />
-        </FormLine>
+          <FormLine withTopBorder={false}>
+            <InlineTextField
+              name="deliveryEstimate"
+              label="お渡し目安"
+              value={values.deliveryEstimate}
+              onChange={updateValue}
+              width="14ch"
+              type="date"
+            />
+            <InlineTextField
+              name="watasakuOrderNo"
+              label="渡作発注書No"
+              value={values.watasakuOrderNo}
+              onChange={updateValue}
+              width="18ch"
+            />
+            <RadioField label="作成区分" value={creationType} options={["デザイン作成", "製品作成"]} onChange={setCreationType} />
+          </FormLine>
 
-        <FormLine>
-          <InlineTextField name="generation" label="世代" value={values.generation} onChange={updateValue} width="10ch" />
-          <InlineTextField name="category" label="カテゴリ" value={values.category} onChange={updateValue} width="10ch" readOnly />
-          <InlineTextField name="gender" label="性別" value={values.gender} onChange={updateValue} width="10ch" />
-        </FormLine>
-
-        <FormLine>
-          <div style={{ width: 260, flex: "0 0 auto" }}>
-            <RadioGroup label="作成区分" value={creationType} options={["デザイン作成", "製品作成"]} onChange={setCreationType} />
-          </div>
-        </FormLine>
+          <FormLine withTopBorder={false}>
+            <InlineTextField name="generation" label="世代" value={values.generation} onChange={updateValue} width="10ch" />
+            <InlineTextField name="category" label="カテゴリ" value={values.category} onChange={updateValue} width="10ch" readOnly />
+            <InlineTextField name="gender" label="性別" value={values.gender} onChange={updateValue} width="10ch" />
+          </FormLine>
+        </div>
 
         <div style={{ display: "grid", gap: 10, marginTop: 6 }}>
           <h3 style={{ margin: 0, fontSize: 16 }}>顧客情報</h3>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "120px minmax(220px, 1fr) 120px minmax(220px, 1fr)",
-              border: "1px solid #d1d5db",
-              alignItems: "stretch",
-            }}
-          >
+          <div style={{ ...gridStyle, gridTemplateColumns: "repeat(2, minmax(320px, 1fr))" }}>
             {[
               { label: "フリガナ", name: "customerKana" },
               { label: "フリガナ", name: "teamKana" },
               { label: "お客様名", name: "customerName" },
               { label: "チーム名", name: "teamName" },
-              { label: "電話番号 / ファックス", name: "customerPhone" },
-              { label: "メールアドレス", name: "email", type: "email" as const },
-            ].map((field, index) => (
-              <div key={`${field.name}-${index}`} style={{ display: "contents" }}>
-                <div
-                  style={{
-                    borderRight: "1px solid #d1d5db",
-                    borderBottom: "1px solid #d1d5db",
-                    background: index % 2 === 0 ? "#c084fc" : "#fef08a",
-                    padding: 8,
-                    fontWeight: 700,
-                  }}
-                >
-                  {field.label}
-                </div>
-                <input
-                  type={field.type ?? "text"}
-                  value={values[field.name] ?? ""}
-                  onChange={(event) => updateValue(field.name, event.target.value)}
-                  style={{
-                    border: 0,
-                    borderRight: index % 2 === 0 ? "1px solid #d1d5db" : 0,
-                    borderBottom: "1px solid #d1d5db",
-                    padding: "0 10px",
-                    minHeight: 36,
-                  }}
-                />
-              </div>
+              { label: "電話番号", name: "customerPhone", type: "tel" as const },
+              { label: "FAX", name: "fax", type: "tel" as const },
+              { label: "メールアドレス", name: "email", type: "email" as const, style: { gridColumn: "1 / -1" } },
+            ].map((field) => (
+              <InlineTextField
+                key={field.name}
+                name={field.name}
+                label={field.label}
+                value={values[field.name] ?? ""}
+                onChange={updateValue}
+                width="18ch"
+                type={field.type}
+                style={field.style}
+              />
             ))}
-            <div
-              style={{
-                borderRight: "1px solid #d1d5db",
-                background: "#d1d5db",
-                padding: 8,
-                fontWeight: 700,
-              }}
-            >
-              フリー入力
-            </div>
-            <textarea
-              value={values.freeText}
-              onChange={(event) => updateValue("freeText", event.target.value)}
-              rows={3}
-              style={{
-                gridColumn: "span 3",
-                border: 0,
-                padding: "8px 10px",
-                resize: "vertical",
-              }}
-            />
+            <TextAreaField name="freeText" label="フリー入力" value={values.freeText} onChange={updateValue} />
           </div>
         </div>
-        <label style={labelStyle}>
-          <span>FAX</span>
-          <input
-            type="tel"
-            value={values.fax}
-            onChange={(event) => updateValue("fax", event.target.value)}
-            style={{ ...inputStyle, width: "18ch" }}
-          />
-        </label>
       </Section>
 
       <Section title="シャツ">
@@ -801,10 +880,15 @@ export function BasketballOrderForm({ initialRecord, initialOrder }: Props) {
         {shirtEnabled ? (
           <>
             <FieldGrid>
-              {shirtFields.map((field) => (
+              {shirtFields.slice(0, 2).map((field) => (
                 <TextField key={field.name} field={field} value={values[field.name] ?? ""} onChange={updateValue} />
               ))}
             </FieldGrid>
+            <div style={{ ...gridStyle, gridTemplateColumns: "repeat(3, minmax(220px, 1fr))" }}>
+              {shirtFields.slice(2).map((field) => (
+                <TextField key={field.name} field={field} value={values[field.name] ?? ""} onChange={updateValue} />
+              ))}
+            </div>
 
             <CheckboxField label="背番号" checked={shirtBackNumber} onChange={setShirtBackNumber} />
             {shirtBackNumber ? (
@@ -857,10 +941,15 @@ export function BasketballOrderForm({ initialRecord, initialOrder }: Props) {
         {pantsEnabled ? (
           <>
             <FieldGrid>
-              {pantsFields.map((field) => (
+              {pantsFields.slice(0, 2).map((field) => (
                 <TextField key={field.name} field={field} value={values[field.name] ?? ""} onChange={updateValue} />
               ))}
             </FieldGrid>
+            <div style={{ ...gridStyle, gridTemplateColumns: "repeat(3, minmax(220px, 1fr))" }}>
+              {pantsFields.slice(2).map((field) => (
+                <TextField key={field.name} field={field} value={values[field.name] ?? ""} onChange={updateValue} />
+              ))}
+            </div>
 
             <CheckboxField label="パンツ番号" checked={pantsNumber} onChange={setPantsNumber} />
             {pantsNumber ? (
