@@ -7,6 +7,12 @@
   "vars": {
     "NEXT_PRIVATE_MINIMAL_MODE": "1"
   },
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true
+    }
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

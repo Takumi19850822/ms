@@ -1,11 +1,12 @@
 import { AppUserRecord, Role, SessionUser } from "@/lib/types";
+import { query } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import { prisma } from "@/lib/prisma";
+import type { QueryResultRow } from "pg";
 
 const ADMIN_EMAIL = "hq@example.com";
 const ADMIN_PASSWORD = "pass1234";
 
-type AppUserRow = {
+type AppUserRow = QueryResultRow & {
   id: string;
   name: string;
   email: string;
@@ -52,46 +53,31 @@ function toRecord(row: AppUserRow): AppUserRecord {
 }
 
 export async function ensureInitialAdminUser() {
-  const existing = await prisma.appUser.findUnique({
-    where: { email: ADMIN_EMAIL },
-    select: { id: true },
-  });
-  if (existing) {
+  const existing = await query<QueryResultRow & { id: string }>('SELECT id FROM "AppUser" WHERE email = $1 LIMIT 1', [
+    ADMIN_EMAIL,
+  ]);
+  if (existing.rowCount) {
     return;
   }
 
   const passwordHash = await hashPassword(ADMIN_PASSWORD);
-  await prisma.appUser.create({
-    data: {
-      id: crypto.randomUUID(),
-      name: "本部 管理者",
-      email: ADMIN_EMAIL,
-      passwordHash,
-      role: "admin",
-      storeId: null,
-      isActive: true,
-      version: 1,
-    },
-  });
+  await query(
+    `INSERT INTO "AppUser" (id, name, email, "passwordHash", role, "storeId", "isActive", "updatedAt", version)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [crypto.randomUUID(), "本部 管理者", ADMIN_EMAIL, passwordHash, "admin", null, true, new Date().toISOString(), 1],
+  );
 }
 
 export async function authenticateUser(email: string, password: string): Promise<SessionUser | null> {
   await ensureInitialAdminUser();
-  const data = await prisma.appUser.findFirst({
-    where: {
-      email: normalizeEmail(email),
-      isActive: true,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      passwordHash: true,
-      role: true,
-      storeId: true,
-      isActive: true,
-    },
-  });
+  const result = await query<AppUserRow>(
+    `SELECT id, name, email, "passwordHash", role, "storeId", "isActive", "updatedAt", version
+     FROM "AppUser"
+     WHERE email = $1 AND "isActive" = true
+     LIMIT 1`,
+    [normalizeEmail(email)],
+  );
+  const data = result.rows[0];
   if (!data?.passwordHash) {
     return null;
   }
@@ -112,69 +98,54 @@ export async function authenticateUser(email: string, password: string): Promise
 export async function listUsers(search: string): Promise<AppUserRecord[]> {
   await ensureInitialAdminUser();
   const keyword = search.trim();
-  const rows = await prisma.appUser.findMany({
-    where: keyword
-      ? {
-          OR: [
-            { name: { contains: keyword, mode: "insensitive" } },
-            { email: { contains: keyword, mode: "insensitive" } },
-            { role: { contains: keyword, mode: "insensitive" } },
-            { storeId: { contains: keyword, mode: "insensitive" } },
-          ],
-        }
-      : undefined,
-    orderBy: { updatedAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      storeId: true,
-      isActive: true,
-      updatedAt: true,
-      version: true,
-    },
-  });
-  return rows.map(toRecord);
+  const result = keyword
+    ? await query<AppUserRow>(
+        `SELECT id, name, email, role, "storeId", "isActive", "updatedAt", version
+         FROM "AppUser"
+         WHERE name ILIKE $1 OR email ILIKE $1 OR role ILIKE $1 OR "storeId" ILIKE $1
+         ORDER BY "updatedAt" DESC`,
+        [`%${keyword}%`],
+      )
+    : await query<AppUserRow>(
+        `SELECT id, name, email, role, "storeId", "isActive", "updatedAt", version
+         FROM "AppUser"
+         ORDER BY "updatedAt" DESC`,
+      );
+  return result.rows.map(toRecord);
 }
 
 export async function createUser(input?: Partial<UserUpdateInput>): Promise<AppUserRecord> {
   await ensureInitialAdminUser();
   const email = normalizeEmail(input?.email || `user-${Date.now()}@example.com`);
   const passwordHash = await hashPassword(input?.password || "ChangeMe123!");
-  const data = await prisma.appUser.create({
-    data: {
-      id: crypto.randomUUID(),
-      name: input?.name || "新規ユーザ",
+  const result = await query<AppUserRow>(
+    `INSERT INTO "AppUser" (id, name, email, "passwordHash", role, "storeId", "isActive", "updatedAt", version)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id, name, email, role, "storeId", "isActive", "updatedAt", version`,
+    [
+      crypto.randomUUID(),
+      input?.name || "新規ユーザ",
       email,
       passwordHash,
-      role: input?.role || "store",
-      storeId: input?.storeId ?? null,
-      isActive: input?.isActive ?? true,
-      version: 1,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      storeId: true,
-      isActive: true,
-      updatedAt: true,
-      version: true,
-    },
-  });
-  return toRecord(data);
+      input?.role || "store",
+      input?.storeId ?? null,
+      input?.isActive ?? true,
+      new Date().toISOString(),
+      1,
+    ],
+  );
+  return toRecord(result.rows[0]);
 }
 
 export async function updateUser(id: string, input: UserUpdateInput): Promise<
   | { ok: true; user: AppUserRecord }
   | { ok: false; reason: "not_found" | "version_conflict" }
 > {
-  const target = await prisma.appUser.findUnique({
-    where: { id },
-    select: { id: true, version: true },
-  });
+  const targetResult = await query<QueryResultRow & { id: string; version: number }>(
+    'SELECT id, version FROM "AppUser" WHERE id = $1 LIMIT 1',
+    [id],
+  );
+  const target = targetResult.rows[0];
   if (!target) {
     return { ok: false, reason: "not_found" };
   }
@@ -203,19 +174,39 @@ export async function updateUser(id: string, input: UserUpdateInput): Promise<
     updatePayload.passwordHash = await hashPassword(input.password);
   }
 
-  const data = await prisma.appUser.update({
-    where: { id },
-    data: updatePayload,
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      storeId: true,
-      isActive: true,
-      updatedAt: true,
-      version: true,
-    },
-  });
-  return { ok: true, user: toRecord(data) };
+  const result = updatePayload.passwordHash
+    ? await query<AppUserRow>(
+        `UPDATE "AppUser"
+         SET name = $1, email = $2, role = $3, "storeId" = $4, "isActive" = $5, version = $6, "passwordHash" = $7, "updatedAt" = $8
+         WHERE id = $9
+         RETURNING id, name, email, role, "storeId", "isActive", "updatedAt", version`,
+        [
+          updatePayload.name,
+          updatePayload.email,
+          updatePayload.role,
+          updatePayload.storeId,
+          updatePayload.isActive,
+          updatePayload.version,
+          updatePayload.passwordHash,
+          new Date().toISOString(),
+          id,
+        ],
+      )
+    : await query<AppUserRow>(
+        `UPDATE "AppUser"
+         SET name = $1, email = $2, role = $3, "storeId" = $4, "isActive" = $5, version = $6, "updatedAt" = $7
+         WHERE id = $8
+         RETURNING id, name, email, role, "storeId", "isActive", "updatedAt", version`,
+        [
+          updatePayload.name,
+          updatePayload.email,
+          updatePayload.role,
+          updatePayload.storeId,
+          updatePayload.isActive,
+          updatePayload.version,
+          new Date().toISOString(),
+          id,
+        ],
+      );
+  return { ok: true, user: toRecord(result.rows[0]) };
 }
