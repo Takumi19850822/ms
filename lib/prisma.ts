@@ -1,3 +1,4 @@
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import type { PoolConfig } from "pg";
@@ -6,7 +7,29 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const connectionString = process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/postgres?schema=public";
+function resolveDatabaseUrl(): string {
+  if (process.env.DATABASE_URL) {
+    return process.env.DATABASE_URL;
+  }
+
+  try {
+    const { env } = getCloudflareContext();
+    const value = (env as Record<string, string | undefined>).DATABASE_URL;
+    if (value) {
+      return value;
+    }
+  } catch {
+    // Not running inside the Cloudflare runtime.
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("DATABASE_URL is not configured in runtime environment.");
+  }
+
+  return "postgresql://postgres:postgres@localhost:5432/postgres?schema=public";
+}
+
+const connectionString = resolveDatabaseUrl();
 const requiresSsl = connectionString.includes("sslmode=require") || connectionString.includes("supabase.com");
 const adapterConnectionString = connectionString
   .replace("?sslmode=require&", "?")

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { authenticate, createSessionCookieValue } from "@/lib/auth";
+import { createSessionCookieValue } from "@/lib/auth";
 import { sessionCookieName } from "@/lib/session-cookie";
+import { authenticateUser } from "@/lib/users";
 
 type LoginRequest = {
   email?: string;
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
   const email = body.email?.trim() ?? "";
   const password = body.password ?? "";
 
-  const user = await authenticate(email, password);
+  const user = await authenticateUser(email, password);
   if (!user) {
     return NextResponse.json({ message: "invalid credentials" }, { status: 401 });
   }
