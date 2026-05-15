@@ -7,6 +7,8 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+let prismaClient: PrismaClient | undefined;
+
 function resolveDatabaseUrl(): string {
   if (process.env.DATABASE_URL) {
     return process.env.DATABASE_URL;
@@ -29,21 +31,35 @@ function resolveDatabaseUrl(): string {
   return "postgresql://postgres:postgres@localhost:5432/postgres?schema=public";
 }
 
-const connectionString = resolveDatabaseUrl();
-const requiresSsl = connectionString.includes("sslmode=require") || connectionString.includes("supabase.com");
-const adapterConnectionString = connectionString
-  .replace("?sslmode=require&", "?")
-  .replace("&sslmode=require", "")
-  .replace("?sslmode=require", "");
-const poolConfig: PoolConfig = {
-  connectionString: adapterConnectionString,
-  ...(requiresSsl ? { ssl: { rejectUnauthorized: false } } : {}),
-};
+function createPrismaClient(): PrismaClient {
+  const connectionString = resolveDatabaseUrl();
+  const requiresSsl = connectionString.includes("sslmode=require") || connectionString.includes("supabase.com");
+  const adapterConnectionString = connectionString
+    .replace("?sslmode=require&", "?")
+    .replace("&sslmode=require", "")
+    .replace("?sslmode=require", "");
+  const poolConfig: PoolConfig = {
+    connectionString: adapterConnectionString,
+    ...(requiresSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  };
 
-const adapter = new PrismaPg(poolConfig);
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  const adapter = new PrismaPg(poolConfig);
+  return new PrismaClient({ adapter });
 }
+
+function getPrismaClient(): PrismaClient {
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma ??= createPrismaClient();
+    return globalForPrisma.prisma;
+  }
+
+  prismaClient ??= createPrismaClient();
+  return prismaClient;
+}
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const value = Reflect.get(getPrismaClient(), prop, receiver);
+    return typeof value === "function" ? value.bind(getPrismaClient()) : value;
+  },
+});
