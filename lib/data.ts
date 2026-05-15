@@ -1,11 +1,10 @@
 import { SessionUser, ResourceRecord } from "@/lib/types";
 import { RESOURCE_CONFIGS } from "@/lib/resources";
-import { query } from "@/lib/db";
-import type { QueryResultRow } from "pg";
+import { getSupabase } from "@/lib/supabase";
 
 const STORE_IDS = ["store-a", "store-b"];
 
-type ResourceRow = QueryResultRow & {
+type ResourceRow = {
   id: string;
   resourceId: string;
   code: string;
@@ -44,24 +43,34 @@ function toRecord(row: ResourceRow): ResourceRecord {
 }
 
 async function ensureSeeded(resourceId: string) {
-  const countResult = await query<QueryResultRow & { count: number }>(
-    'SELECT COUNT(*)::int AS count FROM "ResourceRecord" WHERE "resourceId" = $1',
-    [resourceId],
-  );
-  if ((countResult.rows[0]?.count ?? 0) > 0) {
+  const supabase = getSupabase();
+  const countResult = await supabase
+    .from("ResourceRecord")
+    .select("id", { count: "exact", head: true })
+    .eq("resourceId", resourceId);
+  if (countResult.error) {
+    throw countResult.error;
+  }
+  if ((countResult.count ?? 0) > 0) {
     return;
   }
 
   const seeds = seedRecords(resourceId);
-  await Promise.all(
-    seeds.map((item) =>
-      query(
-        `INSERT INTO "ResourceRecord" (id, "resourceId", code, name, "storeId", note, "updatedAt", version)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [item.id, resourceId, item.code, item.name, item.storeId, item.note, item.updatedAt, item.version],
-      ),
-    ),
+  const created = await supabase.from("ResourceRecord").insert(
+    seeds.map((item) => ({
+      id: item.id,
+      resourceId,
+      code: item.code,
+      name: item.name,
+      storeId: item.storeId,
+      note: item.note,
+      updatedAt: item.updatedAt,
+      version: item.version,
+    })),
   );
+  if (created.error) {
+    throw created.error;
+  }
 }
 
 export async function listResource(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
@@ -71,74 +80,77 @@ export async function listResource(resourceId: string, user: SessionUser, search
 
 export async function listResourceRecords(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
   const keyword = search.trim();
-  const conditions = ['"resourceId" = $1'];
-  const params: unknown[] = [resourceId];
+  const supabase = getSupabase();
+  let request = supabase
+    .from("ResourceRecord")
+    .select("id,resourceId,code,name,storeId,note,updatedAt,version")
+    .eq("resourceId", resourceId)
+    .order("updatedAt", { ascending: false });
   if (user.role === "store") {
-    params.push(user.storeId);
-    conditions.push(`"storeId" = $${params.length}`);
+    request = request.eq("storeId", user.storeId);
   }
   if (keyword) {
-    params.push(`%${keyword}%`);
-    conditions.push(
-      `(code ILIKE $${params.length} OR name ILIKE $${params.length} OR note ILIKE $${params.length} OR "storeId" ILIKE $${params.length})`,
-    );
+    request = request.or(`code.ilike.%${keyword}%,name.ilike.%${keyword}%,note.ilike.%${keyword}%,storeId.ilike.%${keyword}%`);
   }
-  const result = await query<ResourceRow>(
-    `SELECT id, "resourceId", code, name, "storeId", note, "updatedAt", version
-     FROM "ResourceRecord"
-     WHERE ${conditions.join(" AND ")}
-     ORDER BY "updatedAt" DESC`,
-    params,
-  );
+  const result = await request.returns<ResourceRow[]>();
+  if (result.error) {
+    throw result.error;
+  }
 
-  return result.rows.map(toRecord);
+  return result.data.map(toRecord);
 }
 
 export async function getResourceRecord(resourceId: string, id: string, user: SessionUser): Promise<ResourceRecord | null> {
-  const conditions = ['"resourceId" = $1', "id = $2"];
-  const params: unknown[] = [resourceId, id];
+  const supabase = getSupabase();
+  let request = supabase
+    .from("ResourceRecord")
+    .select("id,resourceId,code,name,storeId,note,updatedAt,version")
+    .eq("resourceId", resourceId)
+    .eq("id", id);
   if (user.role === "store") {
-    params.push(user.storeId);
-    conditions.push(`"storeId" = $${params.length}`);
+    request = request.eq("storeId", user.storeId);
   }
-  const result = await query<ResourceRow>(
-    `SELECT id, "resourceId", code, name, "storeId", note, "updatedAt", version
-     FROM "ResourceRecord"
-     WHERE ${conditions.join(" AND ")}
-     LIMIT 1`,
-    params,
-  );
+  const result = await request.maybeSingle<ResourceRow>();
+  if (result.error) {
+    throw result.error;
+  }
 
-  return result.rows[0] ? toRecord(result.rows[0]) : null;
+  return result.data ? toRecord(result.data) : null;
 }
 
 export async function createResource(resourceId: string, user: SessionUser): Promise<ResourceRecord> {
   await ensureSeeded(resourceId);
-  const countResult = await query<QueryResultRow & { count: number }>(
-    'SELECT COUNT(*)::int AS count FROM "ResourceRecord" WHERE "resourceId" = $1',
-    [resourceId],
-  );
+  const supabase = getSupabase();
+  const countResult = await supabase
+    .from("ResourceRecord")
+    .select("id", { count: "exact", head: true })
+    .eq("resourceId", resourceId);
+  if (countResult.error) {
+    throw countResult.error;
+  }
 
-  const nextNumber = (countResult.rows[0]?.count ?? 0) + 1;
+  const nextNumber = (countResult.count ?? 0) + 1;
   const storeId = user.role === "store" ? user.storeId : "store-a";
 
-  const result = await query<ResourceRow>(
-    `INSERT INTO "ResourceRecord" (id, "resourceId", code, name, "storeId", note, "updatedAt", version)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, "resourceId", code, name, "storeId", note, "updatedAt", version`,
-    [
-      crypto.randomUUID(),
+  const result = await supabase
+    .from("ResourceRecord")
+    .insert({
+      id: crypto.randomUUID(),
       resourceId,
-      `${resourceId.toUpperCase().slice(0, 8)}-${nextNumber}`,
-      "新規データ",
+      code: `${resourceId.toUpperCase().slice(0, 8)}-${nextNumber}`,
+      name: "新規データ",
       storeId,
-      "",
-      new Date().toISOString(),
-      1,
-    ],
-  );
+      note: "",
+      updatedAt: new Date().toISOString(),
+      version: 1,
+    })
+    .select("id,resourceId,code,name,storeId,note,updatedAt,version")
+    .single<ResourceRow>();
+  if (result.error) {
+    throw result.error;
+  }
 
-  return toRecord(result.rows[0]);
+  return toRecord(result.data);
 }
 
 export async function createResourceFromPayload(
@@ -147,15 +159,27 @@ export async function createResourceFromPayload(
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note">,
 ): Promise<ResourceRecord> {
   const storeId = user.role === "store" ? user.storeId : payload.storeId;
+  const supabase = getSupabase();
 
-  const result = await query<ResourceRow>(
-    `INSERT INTO "ResourceRecord" (id, "resourceId", code, name, "storeId", note, "updatedAt", version)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, "resourceId", code, name, "storeId", note, "updatedAt", version`,
-    [crypto.randomUUID(), resourceId, payload.code, payload.name, storeId, payload.note, new Date().toISOString(), 1],
-  );
+  const result = await supabase
+    .from("ResourceRecord")
+    .insert({
+      id: crypto.randomUUID(),
+      resourceId,
+      code: payload.code,
+      name: payload.name,
+      storeId,
+      note: payload.note,
+      updatedAt: new Date().toISOString(),
+      version: 1,
+    })
+    .select("id,resourceId,code,name,storeId,note,updatedAt,version")
+    .single<ResourceRow>();
+  if (result.error) {
+    throw result.error;
+  }
 
-  return toRecord(result.rows[0]);
+  return toRecord(result.data);
 }
 
 export async function updateResource(
@@ -165,11 +189,17 @@ export async function updateResource(
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note" | "version">,
 ): Promise<{ ok: true; record: ResourceRecord } | { ok: false; reason: "not_found" | "forbidden" | "version_conflict" }> {
   await ensureSeeded(resourceId);
-  const targetResult = await query<QueryResultRow & { id: string; storeId: string | null; version: number }>(
-    'SELECT id, "storeId", version FROM "ResourceRecord" WHERE id = $1 AND "resourceId" = $2 LIMIT 1',
-    [id, resourceId],
-  );
-  const target = targetResult.rows[0];
+  const supabase = getSupabase();
+  const targetResult = await supabase
+    .from("ResourceRecord")
+    .select("id,storeId,version")
+    .eq("id", id)
+    .eq("resourceId", resourceId)
+    .maybeSingle<{ id: string; storeId: string | null; version: number }>();
+  if (targetResult.error) {
+    throw targetResult.error;
+  }
+  const target = targetResult.data;
   if (!target) {
     return { ok: false, reason: "not_found" };
   }
@@ -180,21 +210,22 @@ export async function updateResource(
     return { ok: false, reason: "version_conflict" };
   }
 
-  const result = await query<ResourceRow>(
-    `UPDATE "ResourceRecord"
-     SET code = $1, name = $2, "storeId" = $3, note = $4, version = $5, "updatedAt" = $6
-     WHERE id = $7
-     RETURNING id, "resourceId", code, name, "storeId", note, "updatedAt", version`,
-    [
-      payload.code,
-      payload.name,
-      user.role === "store" ? user.storeId : payload.storeId,
-      payload.note,
-      target.version + 1,
-      new Date().toISOString(),
-      id,
-    ],
-  );
+  const result = await supabase
+    .from("ResourceRecord")
+    .update({
+      code: payload.code,
+      name: payload.name,
+      storeId: user.role === "store" ? user.storeId : payload.storeId,
+      note: payload.note,
+      version: target.version + 1,
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("id,resourceId,code,name,storeId,note,updatedAt,version")
+    .single<ResourceRow>();
+  if (result.error) {
+    throw result.error;
+  }
 
-  return { ok: true, record: toRecord(result.rows[0]) };
+  return { ok: true, record: toRecord(result.data) };
 }

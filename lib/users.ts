@@ -1,12 +1,11 @@
 import { AppUserRecord, Role, SessionUser } from "@/lib/types";
-import { query } from "@/lib/db";
+import { getSupabase } from "@/lib/supabase";
 import { hashPassword, verifyPassword } from "@/lib/password";
-import type { QueryResultRow } from "pg";
 
 const ADMIN_EMAIL = "hq@example.com";
 const ADMIN_PASSWORD = "pass1234";
 
-type AppUserRow = QueryResultRow & {
+type AppUserRow = {
   id: string;
   name: string;
   email: string;
@@ -53,31 +52,45 @@ function toRecord(row: AppUserRow): AppUserRecord {
 }
 
 export async function ensureInitialAdminUser() {
-  const existing = await query<QueryResultRow & { id: string }>('SELECT id FROM "AppUser" WHERE email = $1 LIMIT 1', [
-    ADMIN_EMAIL,
-  ]);
-  if (existing.rowCount) {
+  const supabase = getSupabase();
+  const existing = await supabase.from("AppUser").select("id").eq("email", ADMIN_EMAIL).maybeSingle();
+  if (existing.error) {
+    throw existing.error;
+  }
+  if (existing.data) {
     return;
   }
 
   const passwordHash = await hashPassword(ADMIN_PASSWORD);
-  await query(
-    `INSERT INTO "AppUser" (id, name, email, "passwordHash", role, "storeId", "isActive", "updatedAt", version)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [crypto.randomUUID(), "本部 管理者", ADMIN_EMAIL, passwordHash, "admin", null, true, new Date().toISOString(), 1],
-  );
+  const created = await supabase.from("AppUser").insert({
+    id: crypto.randomUUID(),
+    name: "本部 管理者",
+    email: ADMIN_EMAIL,
+    passwordHash,
+    role: "admin",
+    storeId: null,
+    isActive: true,
+    updatedAt: new Date().toISOString(),
+    version: 1,
+  });
+  if (created.error) {
+    throw created.error;
+  }
 }
 
 export async function authenticateUser(email: string, password: string): Promise<SessionUser | null> {
   await ensureInitialAdminUser();
-  const result = await query<AppUserRow>(
-    `SELECT id, name, email, "passwordHash", role, "storeId", "isActive", "updatedAt", version
-     FROM "AppUser"
-     WHERE email = $1 AND "isActive" = true
-     LIMIT 1`,
-    [normalizeEmail(email)],
-  );
-  const data = result.rows[0];
+  const supabase = getSupabase();
+  const result = await supabase
+    .from("AppUser")
+    .select("id,name,email,passwordHash,role,storeId,isActive,updatedAt,version")
+    .eq("email", normalizeEmail(email))
+    .eq("isActive", true)
+    .maybeSingle<AppUserRow>();
+  if (result.error) {
+    throw result.error;
+  }
+  const data = result.data;
   if (!data?.passwordHash) {
     return null;
   }
@@ -98,54 +111,57 @@ export async function authenticateUser(email: string, password: string): Promise
 export async function listUsers(search: string): Promise<AppUserRecord[]> {
   await ensureInitialAdminUser();
   const keyword = search.trim();
-  const result = keyword
-    ? await query<AppUserRow>(
-        `SELECT id, name, email, role, "storeId", "isActive", "updatedAt", version
-         FROM "AppUser"
-         WHERE name ILIKE $1 OR email ILIKE $1 OR role ILIKE $1 OR "storeId" ILIKE $1
-         ORDER BY "updatedAt" DESC`,
-        [`%${keyword}%`],
-      )
-    : await query<AppUserRow>(
-        `SELECT id, name, email, role, "storeId", "isActive", "updatedAt", version
-         FROM "AppUser"
-         ORDER BY "updatedAt" DESC`,
-      );
-  return result.rows.map(toRecord);
+  const supabase = getSupabase();
+  let request = supabase
+    .from("AppUser")
+    .select("id,name,email,role,storeId,isActive,updatedAt,version")
+    .order("updatedAt", { ascending: false });
+  if (keyword) {
+    request = request.or(`name.ilike.%${keyword}%,email.ilike.%${keyword}%,role.ilike.%${keyword}%,storeId.ilike.%${keyword}%`);
+  }
+  const result = await request.returns<AppUserRow[]>();
+  if (result.error) {
+    throw result.error;
+  }
+  return result.data.map(toRecord);
 }
 
 export async function createUser(input?: Partial<UserUpdateInput>): Promise<AppUserRecord> {
   await ensureInitialAdminUser();
   const email = normalizeEmail(input?.email || `user-${Date.now()}@example.com`);
   const passwordHash = await hashPassword(input?.password || "ChangeMe123!");
-  const result = await query<AppUserRow>(
-    `INSERT INTO "AppUser" (id, name, email, "passwordHash", role, "storeId", "isActive", "updatedAt", version)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id, name, email, role, "storeId", "isActive", "updatedAt", version`,
-    [
-      crypto.randomUUID(),
-      input?.name || "新規ユーザ",
+  const supabase = getSupabase();
+  const result = await supabase
+    .from("AppUser")
+    .insert({
+      id: crypto.randomUUID(),
+      name: input?.name || "新規ユーザ",
       email,
       passwordHash,
-      input?.role || "store",
-      input?.storeId ?? null,
-      input?.isActive ?? true,
-      new Date().toISOString(),
-      1,
-    ],
-  );
-  return toRecord(result.rows[0]);
+      role: input?.role || "store",
+      storeId: input?.storeId ?? null,
+      isActive: input?.isActive ?? true,
+      updatedAt: new Date().toISOString(),
+      version: 1,
+    })
+    .select("id,name,email,role,storeId,isActive,updatedAt,version")
+    .single<AppUserRow>();
+  if (result.error) {
+    throw result.error;
+  }
+  return toRecord(result.data);
 }
 
 export async function updateUser(id: string, input: UserUpdateInput): Promise<
   | { ok: true; user: AppUserRecord }
   | { ok: false; reason: "not_found" | "version_conflict" }
 > {
-  const targetResult = await query<QueryResultRow & { id: string; version: number }>(
-    'SELECT id, version FROM "AppUser" WHERE id = $1 LIMIT 1',
-    [id],
-  );
-  const target = targetResult.rows[0];
+  const supabase = getSupabase();
+  const targetResult = await supabase.from("AppUser").select("id,version").eq("id", id).maybeSingle<{ id: string; version: number }>();
+  if (targetResult.error) {
+    throw targetResult.error;
+  }
+  const target = targetResult.data;
   if (!target) {
     return { ok: false, reason: "not_found" };
   }
@@ -174,39 +190,14 @@ export async function updateUser(id: string, input: UserUpdateInput): Promise<
     updatePayload.passwordHash = await hashPassword(input.password);
   }
 
-  const result = updatePayload.passwordHash
-    ? await query<AppUserRow>(
-        `UPDATE "AppUser"
-         SET name = $1, email = $2, role = $3, "storeId" = $4, "isActive" = $5, version = $6, "passwordHash" = $7, "updatedAt" = $8
-         WHERE id = $9
-         RETURNING id, name, email, role, "storeId", "isActive", "updatedAt", version`,
-        [
-          updatePayload.name,
-          updatePayload.email,
-          updatePayload.role,
-          updatePayload.storeId,
-          updatePayload.isActive,
-          updatePayload.version,
-          updatePayload.passwordHash,
-          new Date().toISOString(),
-          id,
-        ],
-      )
-    : await query<AppUserRow>(
-        `UPDATE "AppUser"
-         SET name = $1, email = $2, role = $3, "storeId" = $4, "isActive" = $5, version = $6, "updatedAt" = $7
-         WHERE id = $8
-         RETURNING id, name, email, role, "storeId", "isActive", "updatedAt", version`,
-        [
-          updatePayload.name,
-          updatePayload.email,
-          updatePayload.role,
-          updatePayload.storeId,
-          updatePayload.isActive,
-          updatePayload.version,
-          new Date().toISOString(),
-          id,
-        ],
-      );
-  return { ok: true, user: toRecord(result.rows[0]) };
+  const result = await supabase
+    .from("AppUser")
+    .update({ ...updatePayload, updatedAt: new Date().toISOString() })
+    .eq("id", id)
+    .select("id,name,email,role,storeId,isActive,updatedAt,version")
+    .single<AppUserRow>();
+  if (result.error) {
+    throw result.error;
+  }
+  return { ok: true, user: toRecord(result.data) };
 }
