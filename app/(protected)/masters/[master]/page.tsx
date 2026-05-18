@@ -25,7 +25,7 @@ export default async function MasterPage({ params }: Props) {
     if (session.role !== "admin") {
       notFound();
     }
-    const initialRows = await listUsers("");
+    const initialRows = await listUsers("", session);
     return <UserAdminPage initialRows={initialRows} />;
   }
 

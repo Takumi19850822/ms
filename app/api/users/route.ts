@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   }
 
   const search = new URL(request.url).searchParams.get("search") ?? "";
-  const rows = await listUsers(search);
+  const rows = await listUsers(search, session);
   return NextResponse.json({ rows });
 }
 
@@ -40,6 +40,6 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as CreateUserRequest;
-  const user = await createUser(body);
+  const user = await createUser(session, body);
   return NextResponse.json({ user }, { status: 201 });
 }

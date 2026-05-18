@@ -36,7 +36,7 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json({ message: "入力値が不足しています。" }, { status: 400 });
   }
 
-  const result = await updateUser(id, {
+  const result = await updateUser(session, id, {
     name: body.name,
     email: body.email,
     role: body.role,
@@ -47,6 +47,9 @@ export async function PATCH(request: Request, { params }: Params) {
   });
 
   if (!result.ok) {
+    if (result.reason === "forbidden") {
+      return forbidden();
+    }
     if (result.reason === "version_conflict") {
       return NextResponse.json({ message: "他ユーザに更新されました。再読込してください。" }, { status: 409 });
     }

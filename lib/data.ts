@@ -1,8 +1,5 @@
 import { SessionUser, ResourceRecord } from "@/lib/types";
-import { RESOURCE_CONFIGS } from "@/lib/resources";
-import { getSupabase } from "@/lib/supabase";
-
-const STORE_IDS = ["store-a", "store-b"];
+import { getSupabaseWithRls } from "@/lib/supabase";
 
 type ResourceRow = {
   id: string;
@@ -14,21 +11,6 @@ type ResourceRow = {
   updatedAt: Date;
   version: number;
 };
-
-function seedRecords(resourceId: string): ResourceRecord[] {
-  return Array.from({ length: 6 }).map((_, idx) => {
-    const storeId = STORE_IDS[idx % STORE_IDS.length];
-    return {
-      id: crypto.randomUUID(),
-      code: `${resourceId.toUpperCase().slice(0, 8)}-${idx + 1}`,
-      name: `${RESOURCE_CONFIGS[resourceId]?.title ?? resourceId} ${idx + 1}`,
-      storeId,
-      note: idx % 2 === 0 ? "初期データ" : "",
-      updatedAt: new Date().toISOString(),
-      version: 1,
-    };
-  });
-}
 
 function toRecord(row: ResourceRow): ResourceRecord {
   return {
@@ -42,45 +24,13 @@ function toRecord(row: ResourceRow): ResourceRecord {
   };
 }
 
-async function ensureSeeded(resourceId: string) {
-  const supabase = getSupabase();
-  const countResult = await supabase
-    .from("ResourceRecord")
-    .select("id", { count: "exact", head: true })
-    .eq("resourceId", resourceId);
-  if (countResult.error) {
-    throw countResult.error;
-  }
-  if ((countResult.count ?? 0) > 0) {
-    return;
-  }
-
-  const seeds = seedRecords(resourceId);
-  const created = await supabase.from("ResourceRecord").insert(
-    seeds.map((item) => ({
-      id: item.id,
-      resourceId,
-      code: item.code,
-      name: item.name,
-      storeId: item.storeId,
-      note: item.note,
-      updatedAt: item.updatedAt,
-      version: item.version,
-    })),
-  );
-  if (created.error) {
-    throw created.error;
-  }
-}
-
 export async function listResource(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
-  await ensureSeeded(resourceId);
   return listResourceRecords(resourceId, user, search);
 }
 
 export async function listResourceRecords(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
   const keyword = search.trim();
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(user);
   let request = supabase
     .from("ResourceRecord")
     .select("id,resourceId,code,name,storeId,note,updatedAt,version")
@@ -101,7 +51,7 @@ export async function listResourceRecords(resourceId: string, user: SessionUser,
 }
 
 export async function getResourceRecord(resourceId: string, id: string, user: SessionUser): Promise<ResourceRecord | null> {
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(user);
   let request = supabase
     .from("ResourceRecord")
     .select("id,resourceId,code,name,storeId,note,updatedAt,version")
@@ -119,8 +69,7 @@ export async function getResourceRecord(resourceId: string, id: string, user: Se
 }
 
 export async function createResource(resourceId: string, user: SessionUser): Promise<ResourceRecord> {
-  await ensureSeeded(resourceId);
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(user);
   const countResult = await supabase
     .from("ResourceRecord")
     .select("id", { count: "exact", head: true })
@@ -159,7 +108,7 @@ export async function createResourceFromPayload(
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note">,
 ): Promise<ResourceRecord> {
   const storeId = user.role === "store" ? user.storeId : payload.storeId;
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(user);
 
   const result = await supabase
     .from("ResourceRecord")
@@ -188,8 +137,7 @@ export async function updateResource(
   user: SessionUser,
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note" | "version">,
 ): Promise<{ ok: true; record: ResourceRecord } | { ok: false; reason: "not_found" | "forbidden" | "version_conflict" }> {
-  await ensureSeeded(resourceId);
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(user);
   const targetResult = await supabase
     .from("ResourceRecord")
     .select("id,storeId,version")
@@ -197,6 +145,9 @@ export async function updateResource(
     .eq("resourceId", resourceId)
     .maybeSingle<{ id: string; storeId: string | null; version: number }>();
   if (targetResult.error) {
+    if (targetResult.error.code === "42501") {
+      return { ok: false, reason: "forbidden" };
+    }
     throw targetResult.error;
   }
   const target = targetResult.data;
@@ -224,6 +175,9 @@ export async function updateResource(
     .select("id,resourceId,code,name,storeId,note,updatedAt,version")
     .single<ResourceRow>();
   if (result.error) {
+    if (result.error.code === "42501") {
+      return { ok: false, reason: "forbidden" };
+    }
     throw result.error;
   }
 

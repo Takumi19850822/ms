@@ -1,5 +1,5 @@
 import { AppUserRecord, Role, SessionUser } from "@/lib/types";
-import { getSupabase } from "@/lib/supabase";
+import { getSupabase, getSupabaseWithRls } from "@/lib/supabase";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
 const ADMIN_EMAIL = "hq@example.com";
@@ -108,10 +108,9 @@ export async function authenticateUser(email: string, password: string): Promise
   };
 }
 
-export async function listUsers(search: string): Promise<AppUserRecord[]> {
-  await ensureInitialAdminUser();
+export async function listUsers(search: string, user: SessionUser): Promise<AppUserRecord[]> {
   const keyword = search.trim();
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(user);
   let request = supabase
     .from("AppUser")
     .select("id,name,email,role,storeId,isActive,updatedAt,version")
@@ -126,11 +125,10 @@ export async function listUsers(search: string): Promise<AppUserRecord[]> {
   return result.data.map(toRecord);
 }
 
-export async function createUser(input?: Partial<UserUpdateInput>): Promise<AppUserRecord> {
-  await ensureInitialAdminUser();
+export async function createUser(user: SessionUser, input?: Partial<UserUpdateInput>): Promise<AppUserRecord> {
   const email = normalizeEmail(input?.email || `user-${Date.now()}@example.com`);
   const passwordHash = await hashPassword(input?.password || "ChangeMe123!");
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(user);
   const result = await supabase
     .from("AppUser")
     .insert({
@@ -152,13 +150,20 @@ export async function createUser(input?: Partial<UserUpdateInput>): Promise<AppU
   return toRecord(result.data);
 }
 
-export async function updateUser(id: string, input: UserUpdateInput): Promise<
+export async function updateUser(
+  actor: SessionUser,
+  id: string,
+  input: UserUpdateInput,
+): Promise<
   | { ok: true; user: AppUserRecord }
-  | { ok: false; reason: "not_found" | "version_conflict" }
+  | { ok: false; reason: "not_found" | "version_conflict" | "forbidden" }
 > {
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithRls(actor);
   const targetResult = await supabase.from("AppUser").select("id,version").eq("id", id).maybeSingle<{ id: string; version: number }>();
   if (targetResult.error) {
+    if (targetResult.error.code === "42501") {
+      return { ok: false, reason: "forbidden" };
+    }
     throw targetResult.error;
   }
   const target = targetResult.data;
@@ -197,6 +202,9 @@ export async function updateUser(id: string, input: UserUpdateInput): Promise<
     .select("id,name,email,role,storeId,isActive,updatedAt,version")
     .single<AppUserRow>();
   if (result.error) {
+    if (result.error.code === "42501") {
+      return { ok: false, reason: "forbidden" };
+    }
     throw result.error;
   }
   return { ok: true, user: toRecord(result.data) };
