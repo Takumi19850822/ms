@@ -1,98 +1,76 @@
-# RLS移行手順書（このリポジトリ向け）
+# RLS運用手順書（Supabase Auth中心）
 
-この手順書は、`ResourceRecord` / `AppUser` を **RLS前提** で運用するための作業手順です。
+この手順書は、Supabase Auth のユーザーを基準に RLS を運用するための実施手順です。
 
-## 0. 前提
+## 0. 方針
 
-- このリポジトリは Supabase の HTTP API（`supabase-js`）を利用する。
-- 通常業務の読み書きは `anon + JWT` で実行し、RLS を有効にする。
-- `service_role` は最小用途（ログイン照合・初期管理者投入）に限定する。
+- 認証は Supabase Auth（`auth.users`）を利用する。
+- 業務属性（`role`, `store_id`, `is_active`）は `public.app_user_profile` で管理する。
+- 通常データアクセスは `anon key + Authorization: Bearer <access_token>` で実行し、RLS を適用する。
+- `service_role` は管理用途（ユーザー招待、プロフィール管理など）に限定する。
 
-## 1. 必須環境変数を設定する
+## 1. 必須環境変数
 
-`.env` に以下を設定する（本番は環境変数管理で設定）。
+`.env` / Cloudflare の環境変数に以下を設定する。
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_ANON_KEY`
-- `SUPABASE_JWT_SECRET`
-- `SESSION_SECRET`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-補足:
+## 2. SQL適用
 
-- `SUPABASE_JWT_SECRET` は Supabase 側で検証される JWT シークレット。アプリ側と一致が必要。
-- `SESSION_SECRET` はアプリのセッション Cookie 署名用（Supabase とは別用途）。
+Supabase SQL Editor で以下を実行する。
 
-## 2. Supabase に RLS SQL を適用する
+1. `rls_app_user.sql`（`app_user_profile` と関数/ポリシー作成）
+2. `rls_resource_record.sql`（`ResourceRecord` のRLSポリシー更新）
 
-Supabase ダッシュボードの SQL Editor で、以下を順に実行する。
+## 3. 初期管理者セットアップ
 
-1. `rls_resource_record.sql`
-2. `rls_app_user.sql`
+1. Supabase Auth 側で最初の管理者ユーザーを作成（招待または手動作成）。
+2. そのユーザーの `id` を使って `public.app_user_profile` に `role='admin'` の行を作成。
 
-実行後、対象テーブルの RLS が有効化され、ポリシーが作成される。
+例:
 
-## 3. JWTクレーム設計を確認する
+```sql
+insert into public.app_user_profile (id, name, role, store_id, is_active)
+values ('<auth.users.id>', '管理者', 'admin', null, true)
+on conflict (id) do update
+set role = excluded.role, is_active = excluded.is_active;
+```
 
-RLSポリシーは `auth.jwt()` の以下クレームを参照する。
+## 4. 管理者ユーザー追加フロー
 
-- `sub`: ログインユーザーID（`SessionUser.id`）
-- `role`: `"authenticated"`（Supabaseロール）
-- `app_role`: `"admin" | "store_all" | "store"`
-- `app_store_id`: 店舗ID（`store` の場合に利用）
+- 管理画面の新規追加は `auth.admin.inviteUserByEmail` で招待メールを送る。
+- 招待時に `app_user_profile` を同時作成/更新する。
+- ログイン可否は `app_user_profile.is_active` で制御する。
 
-このリポジトリでは `lib/supabase-rls-jwt.ts` で上記クレームを付与して JWT を発行する。
+## 5. 動作確認
 
-## 4. アプリ側の接続経路を確認する
+### 管理者
 
-通常処理は `getSupabaseWithRls(user)` を使う。
+- `/masters/user` でユーザー一覧・招待・更新ができる。
+- リソース一覧で全店舗データが見える。
 
-- `ResourceRecord` 系: `lib/data.ts`
-- `AppUser` 管理系: `lib/users.ts`（一覧/作成/更新）
+### 店舗ユーザー
 
-`getSupabaseWithRls` は以下で構成される。
+- 自店舗の `ResourceRecord` のみ参照/更新できる。
+- ユーザー管理 API は 403 になる。
 
-- APIキー: `SUPABASE_ANON_KEY`
-- Authorization: `Bearer <RLS用JWT>`
+## 6. トラブルシュート
 
-## 5. 動作確認（必須）
+- ログインできない:
+  - `auth.users` に対象ユーザーがあるか
+  - `app_user_profile` に同じ `id` の行があるか
+  - `is_active = true` か
+- 403 が出る:
+  - `role/store_id` の設定がポリシーと一致しているか
+  - SQL が最新（`rls_app_user.sql`, `rls_resource_record.sql`）か
 
-### 5-1. 管理者（admin）
+## 7. 参考ファイル
 
-- ユーザー管理画面で一覧・作成・更新が可能。
-- リソース一覧で全店舗データが取得できる。
-
-### 5-2. 店舗ユーザー（store）
-
-- `ResourceRecord` で自店舗以外が見えない。
-- 自店舗以外の更新は 403 になる。
-- `AppUser` 管理APIにアクセスしても 403 になる。
-
-### 5-3. 失敗時に見るポイント
-
-- `SUPABASE_JWT_SECRET` の不一致（最頻出）
-- JWT の `app_role` / `app_store_id` 欠落
-- SQL未適用（RLS/Policyが未作成）
-
-## 6. 変更後の運用ルール
-
-- 新規API実装時は原則 `getSupabaseWithRls(user)` を使う。
-- `service_role` を使う場合は、用途を「管理・初期化」に限定し、理由を明記する。
-- RLSポリシーと JWT クレーム名を変更する場合は、SQL とアプリを同時に更新する。
-
-## 7. 切り戻し手順（緊急時）
-
-緊急対応時のみ。原因調査後は再度RLS前提に戻す。
-
-1. 必要に応じて該当APIをメンテナンスモード化。
-2. 一時的に `service_role` 経路へ戻す（コード切替）。
-3. 影響範囲確認後、RLS設定・JWT設定を修正して再デプロイ。
-
-## 8. 参考ファイル
-
-- `rls_resource_record.sql`
 - `rls_app_user.sql`
+- `rls_resource_record.sql`
+- `lib/auth-session.ts`
 - `lib/supabase.ts`
-- `lib/supabase-rls-jwt.ts`
 - `lib/data.ts`
 - `lib/users.ts`

@@ -1,21 +1,5 @@
 import { AppUserRecord, Role, SessionUser } from "@/lib/types";
-import { getSupabase, getSupabaseWithRls } from "@/lib/supabase";
-import { hashPassword, verifyPassword } from "@/lib/password";
-
-const ADMIN_EMAIL = "hq@example.com";
-const ADMIN_PASSWORD = "pass1234";
-
-type AppUserRow = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  storeId: string | null;
-  isActive: boolean;
-  updatedAt: Date;
-  version: number;
-  passwordHash?: string;
-};
+import { getSupabase } from "@/lib/supabase";
 
 type UserUpdateInput = {
   name: string;
@@ -31,123 +15,121 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function assertRole(value: string): asserts value is Role {
+function assertRole(value: unknown): asserts value is Role {
   if (value !== "admin" && value !== "store" && value !== "store_all") {
     throw new Error("Invalid role.");
   }
 }
 
-function toRecord(row: AppUserRow): AppUserRecord {
-  assertRole(row.role);
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    role: row.role,
-    storeId: row.storeId,
-    isActive: row.isActive,
-    updatedAt: new Date(row.updatedAt).toISOString(),
-    version: row.version,
-  };
-}
-
-export async function ensureInitialAdminUser() {
-  const supabase = getSupabase();
-  const existing = await supabase.from("AppUser").select("id").eq("email", ADMIN_EMAIL).maybeSingle();
-  if (existing.error) {
-    throw existing.error;
-  }
-  if (existing.data) {
-    return;
-  }
-
-  const passwordHash = await hashPassword(ADMIN_PASSWORD);
-  const created = await supabase.from("AppUser").insert({
-    id: crypto.randomUUID(),
-    name: "本部 管理者",
-    email: ADMIN_EMAIL,
-    passwordHash,
-    role: "admin",
-    storeId: null,
-    isActive: true,
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  });
-  if (created.error) {
-    throw created.error;
+function assertAdmin(user: SessionUser) {
+  if (user.role !== "admin") {
+    throw new Error("Forbidden.");
   }
 }
 
-export async function authenticateUser(email: string, password: string): Promise<SessionUser | null> {
-  await ensureInitialAdminUser();
-  const supabase = getSupabase();
-  const result = await supabase
-    .from("AppUser")
-    .select("id,name,email,passwordHash,role,storeId,isActive,updatedAt,version")
-    .eq("email", normalizeEmail(email))
-    .eq("isActive", true)
-    .maybeSingle<AppUserRow>();
-  if (result.error) {
-    throw result.error;
-  }
-  const data = result.data;
-  if (!data?.passwordHash) {
-    return null;
-  }
-  const verified = await verifyPassword(password, data.passwordHash);
-  if (!verified) {
-    return null;
-  }
-  assertRole(data.role);
+type ProfileRow = {
+  id: string;
+  name: string;
+  role: string;
+  store_id: string | null;
+  is_active: boolean;
+  version: number;
+  updated_at: string;
+};
+
+function mapRecord(profile: ProfileRow, email: string): AppUserRecord {
+  assertRole(profile.role);
   return {
-    id: data.id,
-    name: data.name,
-    email: data.email,
-    role: data.role,
-    storeId: data.storeId,
+    id: profile.id,
+    name: profile.name,
+    email,
+    role: profile.role,
+    storeId: profile.store_id,
+    isActive: profile.is_active,
+    version: profile.version,
+    updatedAt: new Date(profile.updated_at).toISOString(),
   };
+}
+
+async function listAllAuthUsersById() {
+  const supabase = getSupabase();
+  const usersById = new Map<string, { id: string; email: string }>();
+  let page = 1;
+  while (true) {
+    const result = await supabase.auth.admin.listUsers({ page, perPage: 200 });
+    if (result.error) {
+      throw result.error;
+    }
+    const users = result.data.users;
+    for (const user of users) {
+      usersById.set(user.id, { id: user.id, email: user.email ?? "" });
+    }
+    if (users.length < 200) {
+      break;
+    }
+    page += 1;
+  }
+  return usersById;
 }
 
 export async function listUsers(search: string, user: SessionUser): Promise<AppUserRecord[]> {
+  assertAdmin(user);
   const keyword = search.trim();
-  const supabase = await getSupabaseWithRls(user);
-  let request = supabase
-    .from("AppUser")
-    .select("id,name,email,role,storeId,isActive,updatedAt,version")
-    .order("updatedAt", { ascending: false });
+  const supabase = getSupabase();
+  const profileResult = await supabase
+    .from("app_user_profile")
+    .select("id,name,role,store_id,is_active,version,updated_at")
+    .order("updated_at", { ascending: false })
+    .returns<ProfileRow[]>();
+  if (profileResult.error) {
+    throw profileResult.error;
+  }
+
+  const usersById = await listAllAuthUsersById();
+  let rows = profileResult.data.map((profile) => mapRecord(profile, usersById.get(profile.id)?.email ?? ""));
   if (keyword) {
-    request = request.or(`name.ilike.%${keyword}%,email.ilike.%${keyword}%,role.ilike.%${keyword}%,storeId.ilike.%${keyword}%`);
+    const lower = keyword.toLowerCase();
+    rows = rows.filter((row) =>
+      [row.name, row.email, row.role, row.storeId ?? "", row.isActive ? "有効" : "無効"].join(" ").toLowerCase().includes(lower),
+    );
   }
-  const result = await request.returns<AppUserRow[]>();
-  if (result.error) {
-    throw result.error;
-  }
-  return result.data.map(toRecord);
+  return rows;
 }
 
 export async function createUser(user: SessionUser, input?: Partial<UserUpdateInput>): Promise<AppUserRecord> {
-  const email = normalizeEmail(input?.email || `user-${Date.now()}@example.com`);
-  const passwordHash = await hashPassword(input?.password || "ChangeMe123!");
-  const supabase = await getSupabaseWithRls(user);
-  const result = await supabase
-    .from("AppUser")
-    .insert({
-      id: crypto.randomUUID(),
-      name: input?.name || "新規ユーザ",
-      email,
-      passwordHash,
-      role: input?.role || "store",
-      storeId: input?.storeId ?? null,
-      isActive: input?.isActive ?? true,
-      updatedAt: new Date().toISOString(),
-      version: 1,
-    })
-    .select("id,name,email,role,storeId,isActive,updatedAt,version")
-    .single<AppUserRow>();
-  if (result.error) {
-    throw result.error;
+  assertAdmin(user);
+  const email = normalizeEmail(input?.email ?? "");
+  if (!email) {
+    throw new Error("Email is required.");
   }
-  return toRecord(result.data);
+  const supabase = getSupabase();
+  const inviteResult = await supabase.auth.admin.inviteUserByEmail(email, {
+    data: { name: input?.name || "新規ユーザ" },
+  });
+  if (inviteResult.error || !inviteResult.data.user) {
+    throw inviteResult.error ?? new Error("Failed to invite user.");
+  }
+
+  const role = input?.role ?? "store";
+  assertRole(role);
+  const profileResult = await supabase
+    .from("app_user_profile")
+    .upsert(
+      {
+        id: inviteResult.data.user.id,
+        name: input?.name || "新規ユーザ",
+        role,
+        store_id: role === "store" ? (input?.storeId ?? null) : null,
+        is_active: input?.isActive ?? true,
+      },
+      { onConflict: "id" },
+    )
+    .select("id,name,role,store_id,is_active,version,updated_at")
+    .single<ProfileRow>();
+  if (profileResult.error) {
+    throw profileResult.error;
+  }
+  return mapRecord(profileResult.data, email);
 }
 
 export async function updateUser(
@@ -158,8 +140,13 @@ export async function updateUser(
   | { ok: true; user: AppUserRecord }
   | { ok: false; reason: "not_found" | "version_conflict" | "forbidden" }
 > {
-  const supabase = await getSupabaseWithRls(actor);
-  const targetResult = await supabase.from("AppUser").select("id,version").eq("id", id).maybeSingle<{ id: string; version: number }>();
+  assertAdmin(actor);
+  const supabase = getSupabase();
+  const targetResult = await supabase
+    .from("app_user_profile")
+    .select("id,version")
+    .eq("id", id)
+    .maybeSingle<{ id: string; version: number }>();
   if (targetResult.error) {
     if (targetResult.error.code === "42501") {
       return { ok: false, reason: "forbidden" };
@@ -174,38 +161,34 @@ export async function updateUser(
     return { ok: false, reason: "version_conflict" };
   }
 
-  const updatePayload: {
-    name: string;
-    email: string;
-    role: Role;
-    storeId: string | null;
-    isActive: boolean;
-    version: number;
-    passwordHash?: string;
-  } = {
-    name: input.name,
-    email: normalizeEmail(input.email),
-    role: input.role,
-    storeId: input.role === "store" ? input.storeId : null,
-    isActive: input.isActive,
-    version: input.version + 1,
-  };
-
+  const normalizedEmail = normalizeEmail(input.email);
+  const authUpdatePayload: { email: string; password?: string } = { email: normalizedEmail };
   if (input.password) {
-    updatePayload.passwordHash = await hashPassword(input.password);
+    authUpdatePayload.password = input.password;
+  }
+  const authUpdateResult = await supabase.auth.admin.updateUserById(id, authUpdatePayload);
+  if (authUpdateResult.error) {
+    throw authUpdateResult.error;
   }
 
   const result = await supabase
-    .from("AppUser")
-    .update({ ...updatePayload, updatedAt: new Date().toISOString() })
+    .from("app_user_profile")
+    .update({
+      name: input.name,
+      role: input.role,
+      store_id: input.role === "store" ? input.storeId : null,
+      is_active: input.isActive,
+      version: input.version + 1,
+    })
     .eq("id", id)
-    .select("id,name,email,role,storeId,isActive,updatedAt,version")
-    .single<AppUserRow>();
+    .select("id,name,role,store_id,is_active,version,updated_at")
+    .single<ProfileRow>();
   if (result.error) {
     if (result.error.code === "42501") {
       return { ok: false, reason: "forbidden" };
     }
     throw result.error;
   }
-  return { ok: true, user: toRecord(result.data) };
+
+  return { ok: true, user: mapRecord(result.data, normalizedEmail) };
 }

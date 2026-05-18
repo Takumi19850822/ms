@@ -12,10 +12,7 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "lint": "eslint .",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
@@ -32,7 +29,6 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
     "eslint-config-next": "^15.5.18",
-    "prisma": "^7.8.0",
     "typescript": "^6.0.3",
     "wrangler": "^4.90.1"
   }

@@ -1,5 +1,6 @@
 import { SessionUser, ResourceRecord } from "@/lib/types";
-import { getSupabaseWithRls } from "@/lib/supabase";
+import { getAccessTokenFromCookie } from "@/lib/auth";
+import { getSupabaseAnon } from "@/lib/supabase";
 
 type ResourceRow = {
   id: string;
@@ -11,6 +12,14 @@ type ResourceRow = {
   updatedAt: Date;
   version: number;
 };
+
+async function getRlsClient() {
+  const accessToken = await getAccessTokenFromCookie();
+  if (!accessToken) {
+    throw new Error("No access token in cookie.");
+  }
+  return getSupabaseAnon(accessToken);
+}
 
 function toRecord(row: ResourceRow): ResourceRecord {
   return {
@@ -30,7 +39,7 @@ export async function listResource(resourceId: string, user: SessionUser, search
 
 export async function listResourceRecords(resourceId: string, user: SessionUser, search: string): Promise<ResourceRecord[]> {
   const keyword = search.trim();
-  const supabase = await getSupabaseWithRls(user);
+  const supabase = await getRlsClient();
   let request = supabase
     .from("ResourceRecord")
     .select("id,resourceId,code,name,storeId,note,updatedAt,version")
@@ -51,7 +60,7 @@ export async function listResourceRecords(resourceId: string, user: SessionUser,
 }
 
 export async function getResourceRecord(resourceId: string, id: string, user: SessionUser): Promise<ResourceRecord | null> {
-  const supabase = await getSupabaseWithRls(user);
+  const supabase = await getRlsClient();
   let request = supabase
     .from("ResourceRecord")
     .select("id,resourceId,code,name,storeId,note,updatedAt,version")
@@ -69,7 +78,7 @@ export async function getResourceRecord(resourceId: string, id: string, user: Se
 }
 
 export async function createResource(resourceId: string, user: SessionUser): Promise<ResourceRecord> {
-  const supabase = await getSupabaseWithRls(user);
+  const supabase = await getRlsClient();
   const countResult = await supabase
     .from("ResourceRecord")
     .select("id", { count: "exact", head: true })
@@ -108,7 +117,7 @@ export async function createResourceFromPayload(
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note">,
 ): Promise<ResourceRecord> {
   const storeId = user.role === "store" ? user.storeId : payload.storeId;
-  const supabase = await getSupabaseWithRls(user);
+  const supabase = await getRlsClient();
 
   const result = await supabase
     .from("ResourceRecord")
@@ -137,7 +146,7 @@ export async function updateResource(
   user: SessionUser,
   payload: Pick<ResourceRecord, "code" | "name" | "storeId" | "note" | "version">,
 ): Promise<{ ok: true; record: ResourceRecord } | { ok: false; reason: "not_found" | "forbidden" | "version_conflict" }> {
-  const supabase = await getSupabaseWithRls(user);
+  const supabase = await getRlsClient();
   const targetResult = await supabase
     .from("ResourceRecord")
     .select("id,storeId,version")

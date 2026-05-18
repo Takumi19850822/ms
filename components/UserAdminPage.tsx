@@ -46,10 +46,14 @@ export function UserAdminPage({ initialRows }: Props) {
   async function addUser() {
     setError("");
     setSuccess("");
+    const invitedEmail = window.prompt("招待するメールアドレスを入力してください。")?.trim() ?? "";
+    if (!invitedEmail) {
+      return;
+    }
     const response = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ email: invitedEmail }),
     });
     if (!response.ok) {
       const data = (await response.json()) as { message?: string };
@@ -59,7 +63,7 @@ export function UserAdminPage({ initialRows }: Props) {
     const data = (await response.json()) as { user: AppUserRecord };
     setRows((prev) => [data.user, ...prev]);
     setSelectedId(data.user.id);
-    setSuccess("新規ユーザを追加しました。必要に応じて内容とパスワードを変更してください。");
+    setSuccess("招待ユーザを追加しました。招待メールから初期設定を行ってください。");
   }
 
   function patchSelected(partial: Partial<AppUserRecord>) {

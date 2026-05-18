@@ -40,6 +40,12 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as CreateUserRequest;
-  const user = await createUser(session, body);
-  return NextResponse.json({ user }, { status: 201 });
+  try {
+    const user = await createUser(session, body);
+    return NextResponse.json({ user }, { status: 201 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ユーザ招待に失敗しました。";
+    const status = message.includes("required") ? 400 : 500;
+    return NextResponse.json({ message }, { status });
+  }
 }
