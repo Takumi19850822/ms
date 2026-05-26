@@ -59,6 +59,43 @@ export async function listResourceRecords(resourceId: string, user: SessionUser,
   return result.data.map(toRecord);
 }
 
+const MASTER_STORE_RESOURCE_ID = "master-store";
+
+export function parseStoreMasterNote(note: string): { tel: string; fax: string } {
+  try {
+    const parsed = JSON.parse(note) as { tel?: string; fax?: string };
+    return {
+      tel: typeof parsed.tel === "string" ? parsed.tel : "",
+      fax: typeof parsed.fax === "string" ? parsed.fax : "",
+    };
+  } catch {
+    return { tel: "", fax: "" };
+  }
+}
+
+export async function getStoreMasterByCode(code: string, user: SessionUser): Promise<ResourceRecord | null> {
+  const storeCode = code.trim();
+  if (!storeCode) {
+    return null;
+  }
+
+  const supabase = await getRlsClient();
+  let request = supabase
+    .from("ResourceRecord")
+    .select("id,resourceId,code,name,storeId,note,updatedAt,version")
+    .eq("resourceId", MASTER_STORE_RESOURCE_ID)
+    .eq("code", storeCode);
+  if (user.role === "store") {
+    request = request.eq("storeId", user.storeId);
+  }
+  const result = await request.maybeSingle<ResourceRow>();
+  if (result.error) {
+    throw result.error;
+  }
+
+  return result.data ? toRecord(result.data) : null;
+}
+
 export async function getResourceRecord(resourceId: string, id: string, user: SessionUser): Promise<ResourceRecord | null> {
   const supabase = await getRlsClient();
   let request = supabase

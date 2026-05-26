@@ -9,7 +9,6 @@ type CreateUserRequest = {
   role?: Role;
   storeId?: string | null;
   isActive?: boolean;
-  password?: string;
 };
 
 function forbidden() {

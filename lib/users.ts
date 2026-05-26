@@ -1,3 +1,4 @@
+import { getAppUrl } from "@/lib/app-url";
 import { AppUserRecord, Role, SessionUser } from "@/lib/types";
 import { getSupabase } from "@/lib/supabase";
 
@@ -8,7 +9,6 @@ type UserUpdateInput = {
   storeId: string | null;
   isActive: boolean;
   version: number;
-  password?: string;
 };
 
 function normalizeEmail(email: string): string {
@@ -96,6 +96,26 @@ export async function listUsers(search: string, user: SessionUser): Promise<AppU
   return rows;
 }
 
+function authAdminErrorMessage(error: { message?: string } | null | undefined, fallback: string): string {
+  const message = error?.message ?? fallback;
+  if (message.toLowerCase().includes("invalid api key")) {
+    return "Supabase の SUPABASE_SERVICE_ROLE_KEY が無効です。Dashboard > Project Settings > API から再取得して .env を更新してください。";
+  }
+  return message;
+}
+
+async function createAuthUser(supabase: ReturnType<typeof getSupabase>, email: string, input?: Partial<UserUpdateInput>) {
+  const displayName = input?.name || "新規ユーザ";
+  const inviteResult = await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${getAppUrl()}/login`,
+    data: { name: displayName },
+  });
+  if (inviteResult.error || !inviteResult.data.user) {
+    throw new Error(authAdminErrorMessage(inviteResult.error, "招待メールの送信に失敗しました。"));
+  }
+  return inviteResult.data.user;
+}
+
 export async function createUser(user: SessionUser, input?: Partial<UserUpdateInput>): Promise<AppUserRecord> {
   assertAdmin(user);
   const email = normalizeEmail(input?.email ?? "");
@@ -103,12 +123,7 @@ export async function createUser(user: SessionUser, input?: Partial<UserUpdateIn
     throw new Error("Email is required.");
   }
   const supabase = getSupabase();
-  const inviteResult = await supabase.auth.admin.inviteUserByEmail(email, {
-    data: { name: input?.name || "新規ユーザ" },
-  });
-  if (inviteResult.error || !inviteResult.data.user) {
-    throw inviteResult.error ?? new Error("Failed to invite user.");
-  }
+  const authUser = await createAuthUser(supabase, email, input);
 
   const role = input?.role ?? "store";
   assertRole(role);
@@ -116,7 +131,7 @@ export async function createUser(user: SessionUser, input?: Partial<UserUpdateIn
     .from("app_user_profile")
     .upsert(
       {
-        id: inviteResult.data.user.id,
+        id: authUser.id,
         name: input?.name || "新規ユーザ",
         role,
         store_id: role === "store" ? (input?.storeId ?? null) : null,
@@ -127,7 +142,11 @@ export async function createUser(user: SessionUser, input?: Partial<UserUpdateIn
     .select("id,name,role,store_id,is_active,version,updated_at")
     .single<ProfileRow>();
   if (profileResult.error) {
-    throw profileResult.error;
+    throw new Error(
+      profileResult.error.message.includes("app_user_profile")
+        ? "app_user_profile テーブルが未作成です。rls_app_user.sql を Supabase SQL Editor で実行してください。"
+        : profileResult.error.message,
+    );
   }
   return mapRecord(profileResult.data, email);
 }
@@ -162,11 +181,7 @@ export async function updateUser(
   }
 
   const normalizedEmail = normalizeEmail(input.email);
-  const authUpdatePayload: { email: string; password?: string } = { email: normalizedEmail };
-  if (input.password) {
-    authUpdatePayload.password = input.password;
-  }
-  const authUpdateResult = await supabase.auth.admin.updateUserById(id, authUpdatePayload);
+  const authUpdateResult = await supabase.auth.admin.updateUserById(id, { email: normalizedEmail });
   if (authUpdateResult.error) {
     throw authUpdateResult.error;
   }

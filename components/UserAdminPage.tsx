@@ -17,7 +17,6 @@ export function UserAdminPage({ initialRows }: Props) {
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<AppUserRecord[]>(initialRows);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -63,7 +62,7 @@ export function UserAdminPage({ initialRows }: Props) {
     const data = (await response.json()) as { user: AppUserRecord };
     setRows((prev) => [data.user, ...prev]);
     setSelectedId(data.user.id);
-    setSuccess("招待ユーザを追加しました。招待メールから初期設定を行ってください。");
+    setSuccess("招待メールを送信しました。受信者がリンクからパスワードを設定するまでログインできません。");
   }
 
   function patchSelected(partial: Partial<AppUserRecord>) {
@@ -80,7 +79,6 @@ export function UserAdminPage({ initialRows }: Props) {
     setSaving(true);
     setError("");
     setSuccess("");
-    const password = passwordDrafts[selected.id]?.trim();
     const response = await fetch(`/api/users/${selected.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -91,7 +89,6 @@ export function UserAdminPage({ initialRows }: Props) {
         storeId: selected.storeId,
         isActive: selected.isActive,
         version: selected.version,
-        password: password || undefined,
       }),
     });
     setSaving(false);
@@ -103,7 +100,6 @@ export function UserAdminPage({ initialRows }: Props) {
     const data = (await response.json()) as { user: AppUserRecord };
     setRows((prev) => prev.map((row) => (row.id === selected.id ? data.user : row)));
     setSelectedId(data.user.id);
-    setPasswordDrafts((prev) => ({ ...prev, [data.user.id]: "" }));
     setSuccess("保存しました。");
   }
 
@@ -214,16 +210,9 @@ export function UserAdminPage({ initialRows }: Props) {
                   style={{ height: 36, border: "1px solid #d1d5db", borderRadius: 6, padding: "0 10px" }}
                 />
               </label>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span>新しいパスワード</span>
-                <input
-                  type="password"
-                  value={passwordDrafts[selected.id] ?? ""}
-                  placeholder="変更する場合のみ入力"
-                  onChange={(e) => setPasswordDrafts((prev) => ({ ...prev, [selected.id]: e.target.value }))}
-                  style={{ height: 36, border: "1px solid #d1d5db", borderRadius: 6, padding: "0 10px" }}
-                />
-              </label>
+              <p style={{ margin: 0, fontSize: 12, color: "#4b5563" }}>
+                パスワードは招待メールのリンクから本人が設定します。管理者からは変更できません。
+              </p>
               <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input type="checkbox" checked={selected.isActive} onChange={(e) => patchSelected({ isActive: e.target.checked })} />
                 <span>有効</span>

@@ -14,7 +14,6 @@ type UpdateUserRequest = {
   storeId?: string | null;
   isActive?: boolean;
   version?: number;
-  password?: string;
 };
 
 function forbidden() {
@@ -43,7 +42,6 @@ export async function PATCH(request: Request, { params }: Params) {
     storeId: body.storeId ?? null,
     isActive: body.isActive ?? true,
     version: body.version,
-    password: body.password?.trim() || undefined,
   });
 
   if (!result.ok) {

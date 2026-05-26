@@ -21,7 +21,27 @@ export default function LoginPage() {
     });
     setSubmitting(false);
     if (!response.ok) {
-      setError("メールアドレスまたはパスワードが不正です。");
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      switch (data.message) {
+        case "profile_not_found":
+          setError("Supabase Auth には登録されていますが、app_user_profile が未登録です。管理者に連絡するか、RLS_RUNBOOK の初期管理者手順を実行してください。");
+          break;
+        case "email_not_confirmed":
+          setError("招待メールのリンクからパスワード設定が完了していません。メールを確認してください。");
+          break;
+        case "supabase_not_configured":
+          setError(".env に SUPABASE_URL / SUPABASE_ANON_KEY が設定されていません。");
+          break;
+        case "supabase_invalid_key":
+          setError("SUPABASE_ANON_KEY が無効です。Supabase Dashboard から API キーを再取得してください。");
+          break;
+        case "supabase_unreachable":
+          setError("Supabase に接続できません。ネットワークと SUPABASE_URL を確認してください。");
+          break;
+        default:
+          setError("メールアドレスまたはパスワードが不正です。招待メールでパスワード設定済みかも確認してください。");
+          break;
+      }
       return;
     }
     router.push("/orders/all");

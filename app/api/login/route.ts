@@ -14,18 +14,37 @@ export async function POST(request: Request) {
   const password = body.password ?? "";
 
   const client = getSupabaseAnon();
-  const signInResult = await client.auth.signInWithPassword({ email, password });
+  let signInResult;
+  try {
+    signInResult = await client.auth.signInWithPassword({ email, password });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Supabase への接続に失敗しました。";
+    if (message.includes("is not configured")) {
+      return NextResponse.json({ message: "supabase_not_configured" }, { status: 500 });
+    }
+    return NextResponse.json({ message: "supabase_unreachable" }, { status: 503 });
+  }
+
   if (signInResult.error || !signInResult.data.session) {
+    const authMessage = signInResult.error?.message ?? "";
+    if (authMessage.toLowerCase().includes("invalid api key")) {
+      return NextResponse.json({ message: "supabase_invalid_key" }, { status: 500 });
+    }
     return NextResponse.json({ message: "invalid credentials" }, { status: 401 });
   }
 
   const session = signInResult.data.session;
+  const authUser = signInResult.data.user;
+  if (!authUser.email_confirmed_at) {
+    return NextResponse.json({ message: "email_not_confirmed" }, { status: 403 });
+  }
+
   const appSession = await resolveSessionFromTokens({
     accessToken: session.access_token,
     refreshToken: session.refresh_token,
   });
   if (!appSession) {
-    return NextResponse.json({ message: "invalid credentials" }, { status: 401 });
+    return NextResponse.json({ message: "profile_not_found" }, { status: 403 });
   }
 
   const response = NextResponse.json({ ok: true });
